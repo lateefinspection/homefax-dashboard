@@ -8,6 +8,7 @@ import {
   Search,
   ShieldCheck,
   Wrench,
+  Database,
 } from "lucide-react";
 
 const API_BASE_URL = "https://lateef-fastapi-docker.onrender.com";
@@ -34,17 +35,9 @@ const HOMEOWNER_DECISION_OPTIONS = [
 function getRiskBadgeClass(riskLevel) {
   const value = String(riskLevel || "LOW").toUpperCase();
 
-  if (value === "CRITICAL") {
-    return "bg-red-100 text-red-800 border-red-200";
-  }
-
-  if (value === "HIGH") {
-    return "bg-orange-100 text-orange-800 border-orange-200";
-  }
-
-  if (value === "MEDIUM") {
-    return "bg-yellow-100 text-yellow-800 border-yellow-200";
-  }
+  if (value === "CRITICAL") return "bg-red-100 text-red-800 border-red-200";
+  if (value === "HIGH") return "bg-orange-100 text-orange-800 border-orange-200";
+  if (value === "MEDIUM") return "bg-yellow-100 text-yellow-800 border-yellow-200";
 
   return "bg-green-100 text-green-800 border-green-200";
 }
@@ -84,6 +77,64 @@ function cleanSummary(summary) {
     .replace(/\s+/g, " ")
     .replace(/Vasintino Johnson/g, "")
     .trim();
+}
+
+function shortenRecordId(recordId) {
+  if (!recordId) return "Unknown record";
+
+  const value = String(recordId);
+
+  if (value.length <= 54) return value;
+
+  return `${value.slice(0, 36)}...${value.slice(-10)}`;
+}
+
+function buildRecordOptionsFromIssues(issues) {
+  const map = new Map();
+
+  for (const issue of issues || []) {
+    const recordId = issue.record_id;
+
+    if (!recordId) continue;
+
+    const existing = map.get(recordId) || {
+      record_id: recordId,
+      count: 0,
+      high_count: 0,
+      open_count: 0,
+      latest_updated_at: null,
+    };
+
+    existing.count += 1;
+
+    const riskLevel = String(issue.risk_level || "").toUpperCase();
+    const currentStatus = String(issue.current_status || "").toLowerCase();
+
+    if (riskLevel === "HIGH" || riskLevel === "CRITICAL") {
+      existing.high_count += 1;
+    }
+
+    if (currentStatus === "open") {
+      existing.open_count += 1;
+    }
+
+    if (
+      issue.updated_at &&
+      (!existing.latest_updated_at ||
+        new Date(issue.updated_at) > new Date(existing.latest_updated_at))
+    ) {
+      existing.latest_updated_at = issue.updated_at;
+    }
+
+    map.set(recordId, existing);
+  }
+
+  return Array.from(map.values()).sort((a, b) => {
+    const dateA = a.latest_updated_at ? new Date(a.latest_updated_at).getTime() : 0;
+    const dateB = b.latest_updated_at ? new Date(b.latest_updated_at).getTime() : 0;
+
+    return dateB - dateA;
+  });
 }
 
 function IssueCard({ issue, onUpdate, updatingId }) {
@@ -243,12 +294,48 @@ export default function VerifiedIssuesDashboardV1() {
   const [recordId, setRecordId] = useState(DEFAULT_RECORD_ID);
   const [queryRecordId, setQueryRecordId] = useState(DEFAULT_RECORD_ID);
   const [issues, setIssues] = useState([]);
+  const [recordOptions, setRecordOptions] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadingRecords, setLoadingRecords] = useState(false);
   const [updatingId, setUpdatingId] = useState(null);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [riskFilter, setRiskFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+
+  async function loadRecordOptions() {
+    setLoadingRecords(true);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/verified-issues?limit=200`);
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.detail || "Failed to load records.");
+      }
+
+      const options = buildRecordOptionsFromIssues(data.issues || []);
+
+      setRecordOptions(options);
+
+      if (!options.some((option) => option.record_id === DEFAULT_RECORD_ID)) {
+        setRecordOptions([
+          {
+            record_id: DEFAULT_RECORD_ID,
+            count: 0,
+            high_count: 0,
+            open_count: 0,
+            latest_updated_at: null,
+          },
+          ...options,
+        ]);
+      }
+    } catch (err) {
+      console.error("Record selector load failed:", err);
+    } finally {
+      setLoadingRecords(false);
+    }
+  }
 
   async function loadIssues(targetRecordId = queryRecordId) {
     const cleanRecordId = String(targetRecordId || "").trim();
@@ -273,6 +360,7 @@ export default function VerifiedIssuesDashboardV1() {
       }
 
       setIssues(Array.isArray(data.issues) ? data.issues : []);
+      setRecordId(cleanRecordId);
       setQueryRecordId(cleanRecordId);
     } catch (err) {
       setError(err.message || "Failed to load verified issues.");
@@ -308,6 +396,8 @@ export default function VerifiedIssuesDashboardV1() {
           issue.id === issueId ? data.issue : issue
         )
       );
+
+      await loadRecordOptions();
     } catch (err) {
       setError(err.message || "Failed to update issue.");
     } finally {
@@ -316,9 +406,15 @@ export default function VerifiedIssuesDashboardV1() {
   }
 
   useEffect(() => {
+    loadRecordOptions();
     loadIssues(DEFAULT_RECORD_ID);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const selectedRecordMeta = useMemo(() => {
+    return (
+      recordOptions.find((option) => option.record_id === queryRecordId) || null
+    );
+  }, [recordOptions, queryRecordId]);
 
   const filteredIssues = useMemo(() => {
     const searchValue = search.toLowerCase().trim();
@@ -378,14 +474,17 @@ export default function VerifiedIssuesDashboardV1() {
               </h1>
 
               <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-                Review parser-generated inspection issues, update homeowner
-                decisions, and manage repair status from verified issue records.
+                Review parser-generated inspection issues, switch between
+                records, update homeowner decisions, and manage repair status.
               </p>
             </div>
 
             <button
               type="button"
-              onClick={() => loadIssues(queryRecordId)}
+              onClick={() => {
+                loadRecordOptions();
+                loadIssues(queryRecordId);
+              }}
               className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-800 shadow-sm transition hover:bg-slate-50"
             >
               <RefreshCw className="h-4 w-4" />
@@ -421,10 +520,42 @@ export default function VerifiedIssuesDashboardV1() {
         </section>
 
         <section className="mt-5 rounded-3xl bg-white p-5 shadow-sm">
-          <div className="grid gap-3 lg:grid-cols-[1.6fr_1fr_1fr_auto]">
+          <div className="mb-4 flex items-center gap-2 text-sm font-bold text-slate-800">
+            <Database className="h-4 w-4 text-blue-700" />
+            Record Selector v2
+            {loadingRecords && (
+              <span className="text-xs font-medium text-slate-500">
+                loading records...
+              </span>
+            )}
+          </div>
+
+          <div className="grid gap-3 lg:grid-cols-[1.5fr_1.5fr_1fr_1fr_auto]">
             <label className="block">
               <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Record ID
+                Select record
+              </span>
+
+              <select
+                value={recordId}
+                onChange={(event) => setRecordId(event.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              >
+                {recordOptions.length === 0 && (
+                  <option value={recordId}>{shortenRecordId(recordId)}</option>
+                )}
+
+                {recordOptions.map((record) => (
+                  <option key={record.record_id} value={record.record_id}>
+                    {shortenRecordId(record.record_id)} · {record.count} issues
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Or paste record ID
               </span>
 
               <input
@@ -483,6 +614,22 @@ export default function VerifiedIssuesDashboardV1() {
               </button>
             </div>
           </div>
+
+          {selectedRecordMeta && (
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+              <div className="font-bold text-slate-950">
+                Current record: {shortenRecordId(selectedRecordMeta.record_id)}
+              </div>
+              <div className="mt-1 grid gap-2 sm:grid-cols-4">
+                <span>{selectedRecordMeta.count} total issues</span>
+                <span>{selectedRecordMeta.high_count} high/critical</span>
+                <span>{selectedRecordMeta.open_count} open</span>
+                <span>
+                  Last updated: {formatDate(selectedRecordMeta.latest_updated_at)}
+                </span>
+              </div>
+            </div>
+          )}
 
           <label className="mt-4 block">
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
