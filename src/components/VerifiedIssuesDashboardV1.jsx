@@ -3,89 +3,73 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock,
+  Copy,
   Database,
   FileText,
+  Loader2,
   RefreshCw,
   Search,
   ShieldCheck,
   Sparkles,
   Wrench,
-  X,
 } from "lucide-react";
 
-const API_BASE_URL = "https://lateef-fastapi-docker.onrender.com";
+const API_BASE =
+  import.meta.env.VITE_HOMEFAX_API_BASE ||
+  "https://lateef-fastapi-docker.onrender.com";
 
 const DEFAULT_RECORD_ID =
-  "pdf-6039-s-carpenter-st-inspection-report-by-88700c88";
-
-const STATUS_OPTIONS = [
-  "open",
-  "monitoring",
-  "scheduled",
-  "repaired",
-  "verified",
-  "resolved",
-];
-
-const HOMEOWNER_DECISION_OPTIONS = [
-  "unreviewed",
-  "accepted",
-  "rejected",
-  "needs_help",
-];
-
-const ADMIN_REVIEW_OPTIONS = [
-  "pending",
-  "approved",
-  "rejected",
-  "needs_review",
-];
+  "pdf-6039-s-carpenter-st-inspection-report-by-a914edd4";
 
 function getInitialRecordId() {
-  if (typeof window === "undefined") return DEFAULT_RECORD_ID;
-
   const params = new URLSearchParams(window.location.search);
-  const fromUrl = params.get("record_id") || params.get("recordId");
+  const fromUrl = params.get("record_id");
+  const fromStorage = window.localStorage.getItem("homefax_last_record_id");
 
-  return fromUrl?.trim() || DEFAULT_RECORD_ID;
+  return fromUrl || fromStorage || DEFAULT_RECORD_ID;
 }
 
-function getRiskBadgeClass(riskLevel) {
-  const value = String(riskLevel || "LOW").toUpperCase();
-
-  if (value === "CRITICAL") return "bg-red-100 text-red-800 border-red-200";
-  if (value === "HIGH") return "bg-orange-100 text-orange-800 border-orange-200";
-  if (value === "MEDIUM") return "bg-yellow-100 text-yellow-800 border-yellow-200";
-
-  return "bg-green-100 text-green-800 border-green-200";
+function normalizeStatus(value) {
+  return String(value || "").toLowerCase().trim();
 }
 
-function getStatusBadgeClass(status) {
-  const value = String(status || "open").toLowerCase();
-
-  if (value === "resolved" || value === "verified") {
-    return "bg-green-100 text-green-800 border-green-200";
-  }
-
-  if (value === "repaired" || value === "scheduled") {
-    return "bg-blue-100 text-blue-800 border-blue-200";
-  }
-
-  if (value === "monitoring") {
-    return "bg-purple-100 text-purple-800 border-purple-200";
-  }
-
-  return "bg-slate-100 text-slate-800 border-slate-200";
+function normalizeSeverity(value) {
+  return String(value || "").toLowerCase().trim();
 }
 
-function getAdminBadgeClass(status) {
-  const value = String(status || "pending").toLowerCase();
+function isHighOrCritical(issue) {
+  const severity = normalizeSeverity(issue.severity);
+  const riskLevel = normalizeSeverity(issue.risk_level);
 
-  if (value === "approved") return "bg-green-100 text-green-800 border-green-200";
-  if (value === "rejected") return "bg-red-100 text-red-800 border-red-200";
-  if (value === "needs_review") return "bg-yellow-100 text-yellow-800 border-yellow-200";
+  return (
+    severity === "high" ||
+    severity === "critical" ||
+    riskLevel === "high" ||
+    riskLevel === "critical"
+  );
+}
 
-  return "bg-slate-100 text-slate-800 border-slate-200";
+function isOpenIssue(issue) {
+  const currentStatus = normalizeStatus(issue.current_status || issue.status);
+
+  return (
+    currentStatus === "open" ||
+    currentStatus === "new" ||
+    currentStatus === "monitoring" ||
+    currentStatus === "needs_repair" ||
+    currentStatus === "repair" ||
+    currentStatus === ""
+  );
+}
+
+function isResolvedIssue(issue) {
+  const currentStatus = normalizeStatus(issue.current_status || issue.status);
+
+  return (
+    currentStatus === "resolved" ||
+    currentStatus === "closed" ||
+    currentStatus === "fixed"
+  );
 }
 
 function formatDate(value) {
@@ -94,740 +78,973 @@ function formatDate(value) {
   try {
     return new Date(value).toLocaleString();
   } catch {
-    return value;
+    return String(value);
   }
 }
 
-function cleanSummary(summary) {
-  if (!summary) return "No summary available.";
-
-  return String(summary)
-    .replace(/\s+/g, " ")
-    .replace(/Vasintino Johnson/g, "")
-    .trim();
-}
-
-function prettifyRecordId(recordId) {
+function titleCaseFromRecordId(recordId) {
   if (!recordId) return "Unknown record";
 
-  return String(recordId)
-    .replace(/^pdf-/, "")
-    .replace(/-[a-f0-9]{8}$/i, "")
+  return recordId
+    .replace(/^pdf-/i, "")
+    .replace(/-[a-f0-9]{8,}$/i, "")
     .replace(/-/g, " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase())
-    .trim();
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-function shortenRecordId(recordId) {
-  if (!recordId) return "Unknown record";
+function truncateMiddle(value, maxLength = 44) {
+  const text = String(value || "");
 
-  const value = String(recordId);
+  if (text.length <= maxLength) return text;
 
-  if (value.length <= 54) return value;
+  const first = Math.ceil(maxLength / 2) - 2;
+  const last = Math.floor(maxLength / 2) - 2;
 
-  return `${value.slice(0, 36)}...${value.slice(-10)}`;
+  return `${text.slice(0, first)}...${text.slice(text.length - last)}`;
 }
 
-function buildRecordOptionsFromIssues(issues) {
-  const map = new Map();
+function riskBadgeClass(issue) {
+  const severity = normalizeSeverity(issue.severity);
+  const riskLevel = normalizeSeverity(issue.risk_level);
 
-  for (const issue of issues || []) {
-    const recordId = issue.record_id;
-
-    if (!recordId) continue;
-
-    const existing = map.get(recordId) || {
-      record_id: recordId,
-      display_name: prettifyRecordId(recordId),
-      count: 0,
-      high_count: 0,
-      open_count: 0,
-      latest_updated_at: null,
-    };
-
-    existing.count += 1;
-
-    const riskLevel = String(issue.risk_level || "").toUpperCase();
-    const currentStatus = String(issue.current_status || "").toLowerCase();
-
-    if (riskLevel === "HIGH" || riskLevel === "CRITICAL") {
-      existing.high_count += 1;
-    }
-
-    if (currentStatus === "open") {
-      existing.open_count += 1;
-    }
-
-    if (
-      issue.updated_at &&
-      (!existing.latest_updated_at ||
-        new Date(issue.updated_at) > new Date(existing.latest_updated_at))
-    ) {
-      existing.latest_updated_at = issue.updated_at;
-    }
-
-    map.set(recordId, existing);
+  if (severity === "critical" || riskLevel === "critical") {
+    return "border-red-200 bg-red-50 text-red-700";
   }
 
-  return Array.from(map.values()).sort((a, b) => {
-    const dateA = a.latest_updated_at ? new Date(a.latest_updated_at).getTime() : 0;
-    const dateB = b.latest_updated_at ? new Date(b.latest_updated_at).getTime() : 0;
-
-    return dateB - dateA;
-  });
-}
-
-function buildSectionStats(issues) {
-  const map = new Map();
-
-  for (const issue of issues || []) {
-    const section = issue.section || "General";
-    const existing = map.get(section) || {
-      section,
-      total: 0,
-      high: 0,
-      open: 0,
-    };
-
-    existing.total += 1;
-
-    const riskLevel = String(issue.risk_level || "").toUpperCase();
-    const currentStatus = String(issue.current_status || "").toLowerCase();
-
-    if (riskLevel === "HIGH" || riskLevel === "CRITICAL") existing.high += 1;
-    if (currentStatus === "open") existing.open += 1;
-
-    map.set(section, existing);
+  if (severity === "high" || riskLevel === "high") {
+    return "border-orange-200 bg-orange-50 text-orange-700";
   }
 
-  return Array.from(map.values())
-    .sort((a, b) => b.high - a.high || b.open - a.open || b.total - a.total)
-    .slice(0, 8);
+  if (severity === "medium" || riskLevel === "medium") {
+    return "border-yellow-200 bg-yellow-50 text-yellow-700";
+  }
+
+  return "border-slate-200 bg-slate-50 text-slate-700";
 }
 
-function Toast({ toast, onClose }) {
-  if (!toast) return null;
+function statusBadgeClass(status) {
+  const normalized = normalizeStatus(status);
 
-  const isError = toast.type === "error";
+  if (normalized === "resolved" || normalized === "fixed") {
+    return "border-green-200 bg-green-50 text-green-700";
+  }
+
+  if (normalized === "monitoring") {
+    return "border-purple-200 bg-purple-50 text-purple-700";
+  }
+
+  if (normalized === "urgent") {
+    return "border-red-200 bg-red-50 text-red-700";
+  }
+
+  return "border-slate-200 bg-slate-50 text-slate-700";
+}
+
+function getIssueTitle(issue) {
+  return (
+    issue.title ||
+    issue.issueTitle ||
+    issue.issue_title ||
+    issue.finding_title ||
+    issue.type ||
+    "Inspection issue"
+  );
+}
+
+function getIssueSection(issue) {
+  return (
+    issue.section ||
+    issue.system ||
+    issue.component ||
+    issue.location ||
+    "General"
+  );
+}
+
+function getIssueSummary(issue) {
+  return (
+    issue.summary ||
+    issue.notes ||
+    issue.description ||
+    "No summary available."
+  );
+}
+
+function getRiskLabel(issue) {
+  const riskLevel = String(issue.risk_level || "").toUpperCase();
+  const severity = String(issue.severity || "").toUpperCase();
+  const score = issue.risk_score ?? issue.score ?? null;
+
+  const label = riskLevel || severity || "INFO";
+
+  if (score !== null && score !== undefined && score !== "") {
+    return `${label} · ${score}`;
+  }
+
+  return label;
+}
+
+function StatCard({ icon: Icon, label, value, tone }) {
+  const toneClass =
+    tone === "orange"
+      ? "border-orange-200 bg-orange-50 text-orange-700"
+      : tone === "blue"
+      ? "border-blue-200 bg-blue-50 text-blue-700"
+      : tone === "green"
+      ? "border-green-200 bg-green-50 text-green-700"
+      : "border-slate-200 bg-slate-50 text-slate-700";
 
   return (
-    <div
-      className={`fixed right-4 top-4 z-50 max-w-md rounded-2xl border px-4 py-3 shadow-lg ${
-        isError
-          ? "border-red-200 bg-red-50 text-red-800"
-          : "border-green-200 bg-green-50 text-green-800"
-      }`}
-    >
-      <div className="flex items-start gap-3">
-        {isError ? <AlertTriangle className="mt-0.5 h-5 w-5" /> : <CheckCircle2 className="mt-0.5 h-5 w-5" />}
-        <div className="flex-1 text-sm font-semibold">{toast.message}</div>
-        <button type="button" onClick={onClose} className="rounded-lg p-1 hover:bg-white/70">
-          <X className="h-4 w-4" />
-        </button>
-      </div>
+    <div className={`rounded-2xl border p-5 ${toneClass}`}>
+      <Icon className="mb-5 h-6 w-6" />
+      <div className="text-3xl font-black text-slate-950">{value}</div>
+      <div className="mt-1 text-base font-medium">{label}</div>
     </div>
   );
 }
 
-function IssueCard({ issue, onUpdate, updatingId, onToast }) {
-  const [currentStatus, setCurrentStatus] = useState(issue.current_status || "open");
-  const [homeownerDecision, setHomeownerDecision] = useState(issue.homeowner_decision || "unreviewed");
-  const [homeownerNote, setHomeownerNote] = useState(issue.homeowner_note || "");
-  const [adminReviewStatus, setAdminReviewStatus] = useState(issue.admin_review_status || "pending");
-  const [adminNote, setAdminNote] = useState(issue.admin_note || "");
-  const [expanded, setExpanded] = useState(false);
+function IssueCard({ issue, draft, onDraftChange, onSave, onResolve, saving }) {
+  const title = getIssueTitle(issue);
+  const section = getIssueSection(issue);
+  const summary = getIssueSummary(issue);
 
-  useEffect(() => {
-    setCurrentStatus(issue.current_status || "open");
-    setHomeownerDecision(issue.homeowner_decision || "unreviewed");
-    setHomeownerNote(issue.homeowner_note || "");
-    setAdminReviewStatus(issue.admin_review_status || "pending");
-    setAdminNote(issue.admin_note || "");
-  }, [issue]);
+  const currentStatus =
+    draft.current_status ?? issue.current_status ?? issue.status ?? "open";
 
-  const isUpdating = updatingId === issue.id;
-  const summaryText = cleanSummary(issue.summary);
+  const homeownerDecision =
+    draft.homeowner_decision ?? issue.homeowner_decision ?? "unreviewed";
 
-  async function handleSave(extraPayload = {}) {
-    await onUpdate(issue.id, {
-      current_status: currentStatus,
-      homeowner_decision: homeownerDecision,
-      homeowner_note: homeownerNote,
-      admin_review_status: adminReviewStatus,
-      admin_note: adminNote,
-      ...extraPayload,
-    });
-  }
+  const homeownerNote =
+    draft.homeowner_note ?? issue.homeowner_note ?? "";
 
-  async function handleResolve() {
-    setCurrentStatus("resolved");
-    setHomeownerDecision((value) => (value === "unreviewed" ? "accepted" : value));
+  const adminReviewStatus =
+    draft.admin_review_status ?? issue.admin_review_status ?? "pending";
 
-    await handleSave({
-      current_status: "resolved",
-      homeowner_decision: homeownerDecision === "unreviewed" ? "accepted" : homeownerDecision,
-    });
-
-    onToast?.({ type: "success", message: `Issue #${issue.id} marked resolved.` });
-  }
+  const adminNote =
+    draft.admin_note ?? issue.admin_note ?? "";
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${getRiskBadgeClass(issue.risk_level)}`}>
-              {issue.risk_level || "LOW"} · {issue.risk_score ?? 0}
+    <article className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="grid gap-6 lg:grid-cols-[1fr_230px]">
+        <div>
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <span
+              className={`rounded-full border px-3 py-1 text-sm font-bold ${riskBadgeClass(
+                issue
+              )}`}
+            >
+              {getRiskLabel(issue)}
             </span>
 
-            <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${getStatusBadgeClass(issue.current_status)}`}>
-              {issue.current_status || "open"}
+            <span
+              className={`rounded-full border px-3 py-1 text-sm font-bold ${statusBadgeClass(
+                currentStatus
+              )}`}
+            >
+              {currentStatus}
             </span>
 
-            <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
-              {issue.priority || "monitor"}
+            <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-bold text-slate-700">
+              {issue.priority || "review"}
             </span>
 
-            <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${getAdminBadgeClass(issue.admin_review_status)}`}>
-              admin: {issue.admin_review_status || "pending"}
+            <span
+              className={`rounded-full border px-3 py-1 text-sm font-bold ${statusBadgeClass(
+                adminReviewStatus
+              )}`}
+            >
+              admin: {adminReviewStatus}
             </span>
           </div>
 
-          <h3 className="mt-3 text-lg font-bold text-slate-950">{issue.title || "Untitled issue"}</h3>
+          <h2 className="text-2xl font-black tracking-tight text-slate-950">
+            {title}
+          </h2>
 
-          <p className="mt-1 text-sm font-medium text-slate-600">{issue.section || "General"}</p>
-
-          <p className="mt-3 text-sm leading-6 text-slate-700">
-            {expanded ? summaryText : `${summaryText.slice(0, 260)}${summaryText.length > 260 ? "..." : ""}`}
+          <p className="mt-2 text-base font-semibold text-slate-600">
+            {section}
           </p>
 
-          {summaryText.length > 260 && (
+          <p className="mt-5 max-w-5xl text-base leading-7 text-slate-700">
+            {summary}
+          </p>
+
+          <div className="mt-7 grid gap-4 lg:grid-cols-[1fr_1fr_1.15fr]">
+            <label className="block">
+              <span className="mb-2 block text-xs font-black uppercase tracking-wide text-slate-500">
+                Current Status
+              </span>
+              <select
+                value={currentStatus}
+                onChange={(event) =>
+                  onDraftChange(issue.id, "current_status", event.target.value)
+                }
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base font-medium outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              >
+                <option value="open">open</option>
+                <option value="monitoring">monitoring</option>
+                <option value="needs_repair">needs repair</option>
+                <option value="repair_scheduled">repair scheduled</option>
+                <option value="resolved">resolved</option>
+              </select>
+            </label>
+
+            <label className="block">
+              <span className="mb-2 block text-xs font-black uppercase tracking-wide text-slate-500">
+                Homeowner Decision
+              </span>
+              <select
+                value={homeownerDecision}
+                onChange={(event) =>
+                  onDraftChange(
+                    issue.id,
+                    "homeowner_decision",
+                    event.target.value
+                  )
+                }
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base font-medium outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              >
+                <option value="unreviewed">unreviewed</option>
+                <option value="accepted">accepted</option>
+                <option value="needs_repair">needs repair</option>
+                <option value="monitor">monitor</option>
+                <option value="already_fixed">already fixed</option>
+                <option value="not_a_concern">not a concern</option>
+                <option value="image_mismatch">image mismatch</option>
+              </select>
+            </label>
+
             <button
               type="button"
-              onClick={() => setExpanded((value) => !value)}
-              className="mt-2 text-sm font-semibold text-blue-700 hover:text-blue-900"
+              disabled={saving}
+              onClick={() => onSave(issue.id)}
+              className="mt-6 rounded-xl bg-slate-950 px-5 py-3 text-base font-black text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 lg:mt-7"
             >
-              {expanded ? "Show less" : "Show full summary"}
+              {saving ? "Saving..." : "Save update"}
             </button>
-          )}
-        </div>
+          </div>
 
-        <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-600 lg:w-56">
-          <div className="font-semibold text-slate-900">Issue #{issue.id}</div>
-          <div className="mt-1">Severity: {issue.severity || "unknown"}</div>
-          <div className="mt-1">Created: {formatDate(issue.created_at)}</div>
-          <div className="mt-1">Updated: {formatDate(issue.updated_at)}</div>
-        </div>
-      </div>
-
-      <div className="mt-5 grid gap-3 md:grid-cols-3">
-        <label className="block">
-          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Current status</span>
-          <select
-            value={currentStatus}
-            onChange={(event) => setCurrentStatus(event.target.value)}
-            className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-          >
-            {STATUS_OPTIONS.map((option) => (
-              <option key={option} value={option}>{option}</option>
-            ))}
-          </select>
-        </label>
-
-        <label className="block">
-          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Homeowner decision</span>
-          <select
-            value={homeownerDecision}
-            onChange={(event) => setHomeownerDecision(event.target.value)}
-            className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-          >
-            {HOMEOWNER_DECISION_OPTIONS.map((option) => (
-              <option key={option} value={option}>{option}</option>
-            ))}
-          </select>
-        </label>
-
-        <div className="flex items-end gap-2">
-          <button
-            type="button"
-            onClick={() => handleSave()}
-            disabled={isUpdating}
-            className="w-full rounded-xl bg-slate-950 px-4 py-2 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isUpdating ? "Saving..." : "Save update"}
-          </button>
-        </div>
-      </div>
-
-      <label className="mt-3 block">
-        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Homeowner note</span>
-        <textarea
-          value={homeownerNote}
-          onChange={(event) => setHomeownerNote(event.target.value)}
-          rows={2}
-          placeholder="Add homeowner note..."
-          className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-        />
-      </label>
-
-      <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-        <div className="flex items-center gap-2 text-sm font-bold text-slate-900">
-          <Sparkles className="h-4 w-4 text-blue-700" />
-          Admin Review
-        </div>
-
-        <div className="mt-3 grid gap-3 md:grid-cols-[1fr_2fr_auto]">
-          <label className="block">
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Admin status</span>
-            <select
-              value={adminReviewStatus}
-              onChange={(event) => setAdminReviewStatus(event.target.value)}
-              className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-            >
-              {ADMIN_REVIEW_OPTIONS.map((option) => (
-                <option key={option} value={option}>{option}</option>
-              ))}
-            </select>
-          </label>
-
-          <label className="block">
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Admin note</span>
-            <input
-              value={adminNote}
-              onChange={(event) => setAdminNote(event.target.value)}
-              placeholder="Internal admin note..."
-              className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+          <label className="mt-5 block">
+            <span className="mb-2 block text-xs font-black uppercase tracking-wide text-slate-500">
+              Homeowner Note
+            </span>
+            <textarea
+              value={homeownerNote}
+              onChange={(event) =>
+                onDraftChange(issue.id, "homeowner_note", event.target.value)
+              }
+              placeholder="Add homeowner note..."
+              className="min-h-20 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             />
           </label>
 
-          <div className="flex items-end">
-            <button
-              type="button"
-              onClick={handleResolve}
-              disabled={isUpdating}
-              className="w-full rounded-xl border border-green-200 bg-green-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60 md:w-auto"
-            >
-              Mark resolved
-            </button>
+          <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="mb-4 flex items-center gap-2 text-base font-black text-slate-950">
+              <Sparkles className="h-5 w-5 text-blue-600" />
+              Admin Review
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-[0.55fr_1fr_auto]">
+              <label className="block">
+                <span className="mb-2 block text-xs font-black uppercase tracking-wide text-slate-500">
+                  Admin Status
+                </span>
+                <select
+                  value={adminReviewStatus}
+                  onChange={(event) =>
+                    onDraftChange(
+                      issue.id,
+                      "admin_review_status",
+                      event.target.value
+                    )
+                  }
+                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base font-medium outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                >
+                  <option value="pending">pending</option>
+                  <option value="approved">approved</option>
+                  <option value="needs_review">needs review</option>
+                  <option value="rejected">rejected</option>
+                  <option value="resolved">resolved</option>
+                </select>
+              </label>
+
+              <label className="block">
+                <span className="mb-2 block text-xs font-black uppercase tracking-wide text-slate-500">
+                  Admin Note
+                </span>
+                <input
+                  value={adminNote}
+                  onChange={(event) =>
+                    onDraftChange(issue.id, "admin_note", event.target.value)
+                  }
+                  placeholder="Internal admin note..."
+                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+              </label>
+
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => onResolve(issue.id)}
+                className="mt-6 rounded-xl bg-green-600 px-5 py-3 text-base font-black text-white shadow-sm transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60 lg:mt-7"
+              >
+                Mark resolved
+              </button>
+            </div>
           </div>
         </div>
+
+        <aside className="rounded-2xl bg-slate-50 p-5 text-sm text-slate-700">
+          <div className="text-base font-black text-slate-950">
+            Issue #{issue.id}
+          </div>
+
+          <div className="mt-2 space-y-1">
+            <p>
+              <span className="font-semibold">Severity:</span>{" "}
+              {issue.severity || "unknown"}
+            </p>
+            <p>
+              <span className="font-semibold">Created:</span>{" "}
+              {formatDate(issue.created_at)}
+            </p>
+            <p>
+              <span className="font-semibold">Updated:</span>{" "}
+              {formatDate(issue.updated_at)}
+            </p>
+          </div>
+        </aside>
       </div>
-    </div>
+    </article>
   );
 }
 
 export default function VerifiedIssuesDashboardV1() {
-  const initialRecordId = getInitialRecordId();
-
-  const [recordId, setRecordId] = useState(initialRecordId);
-  const [queryRecordId, setQueryRecordId] = useState(initialRecordId);
+  const [recordId, setRecordId] = useState(getInitialRecordId);
+  const [recordInput, setRecordInput] = useState(getInitialRecordId);
   const [issues, setIssues] = useState([]);
   const [recordOptions, setRecordOptions] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [loadingRecords, setLoadingRecords] = useState(false);
-  const [updatingId, setUpdatingId] = useState(null);
-  const [error, setError] = useState("");
-  const [toast, setToast] = useState(null);
-  const [search, setSearch] = useState("");
   const [riskFilter, setRiskFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [searchText, setSearchText] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [recordsLoading, setRecordsLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [drafts, setDrafts] = useState({});
+  const [savingIssueId, setSavingIssueId] = useState(null);
 
-  function showToast(nextToast) {
-    setToast(nextToast);
-    window.setTimeout(() => setToast(null), 3500);
-  }
+  const directLink = useMemo(() => {
+    return `${window.location.origin}${window.location.pathname}?record_id=${encodeURIComponent(
+      recordId
+    )}`;
+  }, [recordId]);
 
-  function updateBrowserUrl(nextRecordId) {
-    if (typeof window === "undefined") return;
-
-    const url = new URL(window.location.href);
-    url.searchParams.set("record_id", nextRecordId);
-    window.history.replaceState({}, "", url.toString());
-  }
-
-  async function loadRecordOptions() {
-    setLoadingRecords(true);
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/verified-issues?limit=200`);
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
-        throw new Error(data.detail || "Failed to load records.");
-      }
-
-      const options = buildRecordOptionsFromIssues(data.issues || []);
-
-      if (!options.some((option) => option.record_id === initialRecordId)) {
-        options.unshift({
-          record_id: initialRecordId,
-          display_name: prettifyRecordId(initialRecordId),
-          count: 0,
-          high_count: 0,
-          open_count: 0,
-          latest_updated_at: null,
-        });
-      }
-
-      setRecordOptions(options);
-    } catch (err) {
-      console.error("Record selector load failed:", err);
-    } finally {
-      setLoadingRecords(false);
-    }
-  }
-
-  async function loadIssues(targetRecordId = queryRecordId) {
-    const cleanRecordId = String(targetRecordId || "").trim();
-
-    if (!cleanRecordId) {
-      setError("Enter a record ID first.");
-      return;
-    }
+  async function fetchRecordIssues(nextRecordId = recordId) {
+    if (!nextRecordId) return;
 
     setLoading(true);
     setError("");
+    setNotice("");
 
     try {
-      const response = await fetch(`${API_BASE_URL}/verified-issues/${encodeURIComponent(cleanRecordId)}`);
+      const response = await fetch(
+        `${API_BASE}/verified-issues/${encodeURIComponent(nextRecordId)}`
+      );
+
       const data = await response.json();
 
-      if (!response.ok || !data.success) {
-        throw new Error(data.detail || "Failed to load verified issues.");
+      if (!response.ok || data.success === false) {
+        throw new Error(data.detail || data.message || "Unable to load issues.");
       }
 
-      setIssues(Array.isArray(data.issues) ? data.issues : []);
-      setRecordId(cleanRecordId);
-      setQueryRecordId(cleanRecordId);
-      updateBrowserUrl(cleanRecordId);
+      const nextIssues = Array.isArray(data.issues) ? data.issues : [];
+
+      setIssues(nextIssues);
+      setRecordId(nextRecordId);
+      setRecordInput(nextRecordId);
+      window.localStorage.setItem("homefax_last_record_id", nextRecordId);
+
+      const url = new URL(window.location.href);
+      url.searchParams.set("record_id", nextRecordId);
+      window.history.replaceState({}, "", url.toString());
+
+      setDrafts({});
     } catch (err) {
-      setError(err.message || "Failed to load verified issues.");
-      showToast({ type: "error", message: err.message || "Failed to load verified issues." });
+      setError(err.message || "Unable to load verified issues.");
+      setIssues([]);
     } finally {
       setLoading(false);
     }
   }
 
-  async function updateIssue(issueId, payload) {
-    setUpdatingId(issueId);
-    setError("");
+  async function fetchRecordOptions() {
+    setRecordsLoading(true);
 
-    try {
-      const response = await fetch(`${API_BASE_URL}/verified-issue/${issueId}/status`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+    const candidateUrls = [
+      `${API_BASE}/verified-issues-records`,
+      `${API_BASE}/verified-issues/records`,
+      `${API_BASE}/verified-issue-records`,
+    ];
 
-      const data = await response.json();
+    for (const url of candidateUrls) {
+      try {
+        const response = await fetch(url);
 
-      if (!response.ok || !data.success) {
-        throw new Error(data.detail || "Failed to update issue.");
+        if (!response.ok) continue;
+
+        const data = await response.json();
+
+        const records =
+          data.records ||
+          data.record_ids ||
+          data.items ||
+          data.data ||
+          [];
+
+        if (Array.isArray(records) && records.length > 0) {
+          const normalized = records
+            .map((record) => {
+              if (typeof record === "string") {
+                return {
+                  record_id: record,
+                  label: titleCaseFromRecordId(record),
+                  total: null,
+                };
+              }
+
+              return {
+                record_id:
+                  record.record_id ||
+                  record.recordId ||
+                  record.id ||
+                  record.value,
+                label:
+                  record.label ||
+                  record.name ||
+                  titleCaseFromRecordId(
+                    record.record_id || record.recordId || record.id
+                  ),
+                total:
+                  record.total ||
+                  record.count ||
+                  record.issue_count ||
+                  record.issues_count ||
+                  null,
+              };
+            })
+            .filter((record) => record.record_id);
+
+          setRecordOptions(normalized);
+          setRecordsLoading(false);
+          return;
+        }
+      } catch {
+        // Try the next endpoint.
       }
-
-      setIssues((currentIssues) =>
-        currentIssues.map((issue) => (issue.id === issueId ? data.issue : issue))
-      );
-
-      showToast({ type: "success", message: `Issue #${issueId} saved successfully.` });
-      await loadRecordOptions();
-    } catch (err) {
-      setError(err.message || "Failed to update issue.");
-      showToast({ type: "error", message: err.message || "Failed to update issue." });
-    } finally {
-      setUpdatingId(null);
     }
+
+    setRecordOptions([]);
+    setRecordsLoading(false);
   }
 
   useEffect(() => {
-    loadRecordOptions();
-    loadIssues(initialRecordId);
+    fetchRecordIssues(recordId);
+    fetchRecordOptions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const selectedRecordMeta = useMemo(() => {
-    return recordOptions.find((option) => option.record_id === queryRecordId) || null;
-  }, [recordOptions, queryRecordId]);
+  const currentRecordStats = useMemo(() => {
+    const currentIssues = Array.isArray(issues) ? issues : [];
 
-  const filteredIssues = useMemo(() => {
-    const searchValue = search.toLowerCase().trim();
+    const total = currentIssues.length;
+    const highCritical = currentIssues.filter(isHighOrCritical).length;
+    const open = currentIssues.filter(isOpenIssue).length;
+    const resolved = currentIssues.filter(isResolvedIssue).length;
 
-    return issues.filter((issue) => {
-      const matchesSearch =
-        !searchValue ||
-        String(issue.title || "").toLowerCase().includes(searchValue) ||
-        String(issue.section || "").toLowerCase().includes(searchValue) ||
-        String(issue.summary || "").toLowerCase().includes(searchValue);
+    const lastUpdated =
+      currentIssues
+        .map((issue) => issue.updated_at || issue.created_at)
+        .filter(Boolean)
+        .sort()
+        .at(-1) || null;
 
-      const matchesRisk =
-        riskFilter === "all" || String(issue.risk_level || "").toUpperCase() === riskFilter;
-
-      const matchesStatus =
-        statusFilter === "all" || String(issue.current_status || "").toLowerCase() === statusFilter;
-
-      return matchesSearch && matchesRisk && matchesStatus;
-    });
-  }, [issues, search, riskFilter, statusFilter]);
-
-  const stats = useMemo(() => {
-    const total = issues.length;
-    const high = issues.filter((issue) =>
-      ["HIGH", "CRITICAL"].includes(String(issue.risk_level || "").toUpperCase())
-    ).length;
-    const open = issues.filter((issue) => String(issue.current_status || "").toLowerCase() === "open").length;
-    const resolved = issues.filter((issue) => String(issue.current_status || "").toLowerCase() === "resolved").length;
-
-    return { total, high, open, resolved };
+    return {
+      total,
+      highCritical,
+      open,
+      resolved,
+      lastUpdated,
+    };
   }, [issues]);
 
-  const sectionStats = useMemo(() => buildSectionStats(issues), [issues]);
+  const sectionStats = useMemo(() => {
+    const map = new Map();
 
-  const directLink = useMemo(() => {
-    if (typeof window === "undefined") return "";
+    for (const issue of issues) {
+      const section = getIssueSection(issue);
 
-    const url = new URL(window.location.href);
-    url.searchParams.set("record_id", queryRecordId);
-    return url.toString();
-  }, [queryRecordId]);
+      if (!map.has(section)) {
+        map.set(section, {
+          section,
+          total: 0,
+          high: 0,
+          open: 0,
+        });
+      }
+
+      const entry = map.get(section);
+
+      entry.total += 1;
+
+      if (isHighOrCritical(issue)) {
+        entry.high += 1;
+      }
+
+      if (isOpenIssue(issue)) {
+        entry.open += 1;
+      }
+    }
+
+    return Array.from(map.values())
+      .sort((a, b) => {
+        if (b.high !== a.high) return b.high - a.high;
+        return b.total - a.total;
+      })
+      .slice(0, 8);
+  }, [issues]);
+
+  const filteredIssues = useMemo(() => {
+    const query = searchText.toLowerCase().trim();
+
+    return issues.filter((issue) => {
+      if (riskFilter !== "all") {
+        const severity = normalizeSeverity(issue.severity);
+        const riskLevel = normalizeSeverity(issue.risk_level);
+
+        if (riskFilter === "high_critical") {
+          if (!isHighOrCritical(issue)) return false;
+        } else if (severity !== riskFilter && riskLevel !== riskFilter) {
+          return false;
+        }
+      }
+
+      if (statusFilter !== "all") {
+        const status = normalizeStatus(issue.current_status || issue.status);
+
+        if (statusFilter === "open") {
+          if (!isOpenIssue(issue)) return false;
+        } else if (statusFilter === "resolved") {
+          if (!isResolvedIssue(issue)) return false;
+        } else if (status !== statusFilter) {
+          return false;
+        }
+      }
+
+      if (query) {
+        const searchable = [
+          issue.id,
+          getIssueTitle(issue),
+          getIssueSection(issue),
+          getIssueSummary(issue),
+          issue.severity,
+          issue.risk_level,
+          issue.priority,
+          issue.current_status,
+          issue.homeowner_decision,
+          issue.admin_review_status,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+
+        if (!searchable.includes(query)) return false;
+      }
+
+      return true;
+    });
+  }, [issues, riskFilter, statusFilter, searchText]);
+
+  function updateDraft(issueId, field, value) {
+    setDrafts((current) => ({
+      ...current,
+      [issueId]: {
+        ...(current[issueId] || {}),
+        [field]: value,
+      },
+    }));
+  }
+
+  async function saveIssue(issueId, extraPayload = {}) {
+    const issue = issues.find((item) => item.id === issueId);
+
+    if (!issue) return;
+
+    const draft = drafts[issueId] || {};
+
+    const payload = {
+      current_status:
+        draft.current_status ?? issue.current_status ?? issue.status ?? "open",
+      homeowner_decision:
+        draft.homeowner_decision ?? issue.homeowner_decision ?? "unreviewed",
+      homeowner_note: draft.homeowner_note ?? issue.homeowner_note ?? "",
+      admin_review_status:
+        draft.admin_review_status ?? issue.admin_review_status ?? "pending",
+      admin_note: draft.admin_note ?? issue.admin_note ?? "",
+      ...extraPayload,
+    };
+
+    setSavingIssueId(issueId);
+    setError("");
+    setNotice("");
+
+    try {
+      let response = await fetch(`${API_BASE}/verified-issues/${issueId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        response = await fetch(`${API_BASE}/verified-issues/${issueId}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        });
+      }
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || data.success === false) {
+        throw new Error(data.detail || data.message || "Unable to save issue.");
+      }
+
+      setNotice("Issue updated.");
+      await fetchRecordIssues(recordId);
+    } catch (err) {
+      setError(err.message || "Unable to save issue.");
+    } finally {
+      setSavingIssueId(null);
+    }
+  }
+
+  async function markResolved(issueId) {
+    await saveIssue(issueId, {
+      current_status: "resolved",
+      admin_review_status: "resolved",
+    });
+  }
+
+  async function handleLoadRecord() {
+    const trimmed = recordInput.trim();
+
+    if (!trimmed) {
+      setError("Please enter a record ID.");
+      return;
+    }
+
+    await fetchRecordIssues(trimmed);
+  }
+
+  async function handleCopyDirectLink() {
+    try {
+      await navigator.clipboard.writeText(directLink);
+      setNotice("Direct link copied.");
+    } catch {
+      setError("Could not copy direct link.");
+    }
+  }
+
+  const selectedRecordLabel = titleCaseFromRecordId(recordId);
 
   return (
-    <main className="min-h-screen bg-slate-100 px-4 py-6 text-slate-950 sm:px-6 lg:px-8">
-      <Toast toast={toast} onClose={() => setToast(null)} />
-
-      <div className="mx-auto max-w-7xl">
-        <section className="rounded-3xl bg-white p-6 shadow-sm">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+    <main className="min-h-screen bg-slate-100 px-4 py-8 text-slate-900 sm:px-8">
+      <div className="mx-auto max-w-7xl space-y-8">
+        <section className="rounded-3xl bg-white p-6 shadow-sm sm:p-8">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <div className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-blue-700">
-                <ShieldCheck className="h-4 w-4" />
+              <div className="mb-4 flex items-center gap-2 text-sm font-black uppercase tracking-wide text-blue-700">
+                <ShieldCheck className="h-5 w-5" />
                 HomeFax AI
               </div>
 
-              <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-950">
+              <h1 className="text-4xl font-black tracking-tight text-slate-950">
                 Verified Issues Dashboard
               </h1>
 
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-                Review parser-generated inspection issues, switch between records, update homeowner decisions, and manage repair status.
+              <p className="mt-3 max-w-3xl text-base leading-7 text-slate-600">
+                Review parser-generated inspection issues, switch between
+                records, update homeowner decisions, and manage repair status.
               </p>
             </div>
 
             <button
               type="button"
-              onClick={() => {
-                loadRecordOptions();
-                loadIssues(queryRecordId);
-              }}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-800 shadow-sm transition hover:bg-slate-50"
+              onClick={() => fetchRecordIssues(recordId)}
+              disabled={loading}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 font-black text-slate-800 shadow-sm transition hover:border-blue-200 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <RefreshCw className="h-4 w-4" />
+              {loading ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <RefreshCw className="h-5 w-5" />
+              )}
               Refresh
             </button>
           </div>
 
-          <div className="mt-6 grid gap-3 md:grid-cols-4">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <FileText className="h-5 w-5 text-slate-500" />
-              <div className="mt-3 text-2xl font-black">{stats.total}</div>
-              <div className="text-sm text-slate-600">Total issues</div>
-            </div>
-
-            <div className="rounded-2xl border border-orange-200 bg-orange-50 p-4">
-              <AlertTriangle className="h-5 w-5 text-orange-600" />
-              <div className="mt-3 text-2xl font-black">{stats.high}</div>
-              <div className="text-sm text-orange-800">High/Critical</div>
-            </div>
-
-            <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
-              <Clock className="h-5 w-5 text-blue-600" />
-              <div className="mt-3 text-2xl font-black">{stats.open}</div>
-              <div className="text-sm text-blue-800">Open</div>
-            </div>
-
-            <div className="rounded-2xl border border-green-200 bg-green-50 p-4">
-              <CheckCircle2 className="h-5 w-5 text-green-600" />
-              <div className="mt-3 text-2xl font-black">{stats.resolved}</div>
-              <div className="text-sm text-green-800">Resolved</div>
-            </div>
+          <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <StatCard
+              icon={FileText}
+              label="Total issues"
+              value={currentRecordStats.total}
+              tone="slate"
+            />
+            <StatCard
+              icon={AlertTriangle}
+              label="High/Critical"
+              value={currentRecordStats.highCritical}
+              tone="orange"
+            />
+            <StatCard
+              icon={Clock}
+              label="Open"
+              value={currentRecordStats.open}
+              tone="blue"
+            />
+            <StatCard
+              icon={CheckCircle2}
+              label="Resolved"
+              value={currentRecordStats.resolved}
+              tone="green"
+            />
           </div>
         </section>
 
-        <section className="mt-5 rounded-3xl bg-white p-5 shadow-sm">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-sm font-bold text-slate-800">
-              <Database className="h-4 w-4 text-blue-700" />
+        <section className="rounded-3xl bg-white p-6 shadow-sm sm:p-8">
+          <div className="mb-7 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-center gap-2 text-lg font-black text-slate-950">
+              <Database className="h-5 w-5 text-blue-600" />
               Record Selector v2
-              {loadingRecords && <span className="text-xs font-medium text-slate-500">loading records...</span>}
             </div>
 
             <button
               type="button"
-              onClick={() => {
-                navigator.clipboard.writeText(directLink);
-                showToast({ type: "success", message: "Direct dashboard link copied." });
-              }}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+              onClick={handleCopyDirectLink}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 shadow-sm transition hover:border-blue-200 hover:text-blue-700"
             >
+              <Copy className="h-4 w-4" />
               Copy direct link
             </button>
           </div>
 
-          <div className="grid gap-3 lg:grid-cols-[1.5fr_1.5fr_1fr_1fr_auto]">
+          <div className="grid gap-4 lg:grid-cols-[1fr_1fr_0.75fr_0.75fr_auto]">
             <label className="block">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Select record</span>
-
+              <span className="mb-2 block text-xs font-black uppercase tracking-wide text-slate-500">
+                Select Record
+              </span>
               <select
                 value={recordId}
-                onChange={(event) => setRecordId(event.target.value)}
-                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                onChange={(event) => {
+                  setRecordInput(event.target.value);
+                  fetchRecordIssues(event.target.value);
+                }}
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base font-medium outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               >
-                {recordOptions.length === 0 && <option value={recordId}>{shortenRecordId(recordId)}</option>}
+                <option value={recordId}>
+                  {truncateMiddle(selectedRecordLabel, 38)} ·{" "}
+                  {currentRecordStats.total} issues
+                </option>
 
-                {recordOptions.map((record) => (
-                  <option key={record.record_id} value={record.record_id}>
-                    {record.display_name || shortenRecordId(record.record_id)} · {record.count} issues
-                  </option>
-                ))}
+                {recordOptions
+                  .filter((record) => record.record_id !== recordId)
+                  .map((record) => (
+                    <option key={record.record_id} value={record.record_id}>
+                      {truncateMiddle(record.label, 38)}
+                      {record.total !== null ? ` · ${record.total} issues` : ""}
+                    </option>
+                  ))}
               </select>
             </label>
 
             <label className="block">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Or paste record ID</span>
-
+              <span className="mb-2 block text-xs font-black uppercase tracking-wide text-slate-500">
+                Or Paste Record ID
+              </span>
               <input
-                value={recordId}
-                onChange={(event) => setRecordId(event.target.value)}
-                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                value={recordInput}
+                onChange={(event) => setRecordInput(event.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base font-medium outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                placeholder="pdf-..."
               />
             </label>
 
             <label className="block">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Risk</span>
-
+              <span className="mb-2 block text-xs font-black uppercase tracking-wide text-slate-500">
+                Risk
+              </span>
               <select
                 value={riskFilter}
                 onChange={(event) => setRiskFilter(event.target.value)}
-                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base font-medium outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               >
                 <option value="all">All risk levels</option>
-                <option value="CRITICAL">Critical</option>
-                <option value="HIGH">High</option>
-                <option value="MEDIUM">Medium</option>
-                <option value="LOW">Low</option>
+                <option value="high_critical">High/Critical</option>
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
               </select>
             </label>
 
             <label className="block">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Status</span>
-
+              <span className="mb-2 block text-xs font-black uppercase tracking-wide text-slate-500">
+                Status
+              </span>
               <select
                 value={statusFilter}
                 onChange={(event) => setStatusFilter(event.target.value)}
-                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base font-medium outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               >
                 <option value="all">All statuses</option>
-                {STATUS_OPTIONS.map((option) => (
-                  <option key={option} value={option}>{option}</option>
-                ))}
+                <option value="open">Open</option>
+                <option value="monitoring">Monitoring</option>
+                <option value="needs_repair">Needs repair</option>
+                <option value="resolved">Resolved</option>
               </select>
             </label>
 
-            <div className="flex items-end">
-              <button
-                type="button"
-                onClick={() => loadIssues(recordId)}
-                disabled={loading}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 py-2 text-sm font-bold text-white transition hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <Wrench className="h-4 w-4" />
-                {loading ? "Loading..." : "Load"}
-              </button>
+            <button
+              type="button"
+              onClick={handleLoadRecord}
+              disabled={loading}
+              className="mt-6 inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-black text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 lg:mt-7"
+            >
+              <Wrench className="h-5 w-5" />
+              Load
+            </button>
+          </div>
+
+          <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="text-base font-black text-slate-950">
+              Current record: {selectedRecordLabel}
+            </div>
+
+            <div className="mt-1 text-sm font-semibold text-slate-500">
+              {recordId}
+            </div>
+
+            <div className="mt-5 grid gap-4 text-base text-slate-700 md:grid-cols-4">
+              <div>
+                <span className="font-black">{currentRecordStats.total}</span>{" "}
+                total issues
+              </div>
+              <div>
+                <span className="font-black">
+                  {currentRecordStats.highCritical}
+                </span>{" "}
+                high/critical
+              </div>
+              <div>
+                <span className="font-black">{currentRecordStats.open}</span>{" "}
+                open
+              </div>
+              <div>
+                Last updated: {formatDate(currentRecordStats.lastUpdated)}
+              </div>
             </div>
           </div>
 
-          {selectedRecordMeta && (
-            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-              <div className="font-bold text-slate-950">
-                Current record: {prettifyRecordId(selectedRecordMeta.record_id)}
-              </div>
-              <div className="mt-1 break-all text-xs text-slate-500">{selectedRecordMeta.record_id}</div>
-              <div className="mt-3 grid gap-2 sm:grid-cols-4">
-                <span>{selectedRecordMeta.count} total issues</span>
-                <span>{selectedRecordMeta.high_count} high/critical</span>
-                <span>{selectedRecordMeta.open_count} open</span>
-                <span>Last updated: {formatDate(selectedRecordMeta.latest_updated_at)}</span>
-              </div>
-            </div>
-          )}
-
           {sectionStats.length > 0 && (
-            <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
-              <div className="text-sm font-bold text-slate-950">Issue counts by section</div>
-              <div className="mt-3 grid gap-2 md:grid-cols-4">
-                {sectionStats.map((section) => (
-                  <button
-                    key={section.section}
-                    type="button"
-                    onClick={() => setSearch(section.section)}
-                    className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-left hover:bg-slate-100"
+            <div className="mt-5 rounded-2xl border border-slate-200 p-4">
+              <div className="mb-4 text-base font-black text-slate-950">
+                Issue counts by section
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                {sectionStats.map((item) => (
+                  <div
+                    key={item.section}
+                    className="rounded-xl border border-slate-200 bg-slate-50 p-4"
                   >
-                    <div className="text-sm font-bold text-slate-950">{section.section}</div>
-                    <div className="mt-1 text-xs text-slate-600">
-                      {section.total} total · {section.high} high · {section.open} open
+                    <div className="font-black text-slate-950">
+                      {item.section}
                     </div>
-                  </button>
+                    <div className="mt-1 text-sm text-slate-600">
+                      {item.total} total · {item.high} high · {item.open} open
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
           )}
 
-          <label className="mt-4 block">
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Search issues</span>
-
-            <div className="mt-1 flex items-center rounded-xl border border-slate-200 bg-white px-3 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100">
-              <Search className="h-4 w-4 text-slate-400" />
-
+          <label className="mt-5 block">
+            <span className="mb-2 block text-xs font-black uppercase tracking-wide text-slate-500">
+              Search Issues
+            </span>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
               <input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                value={searchText}
+                onChange={(event) => setSearchText(event.target.value)}
                 placeholder="Search title, section, or summary..."
-                className="w-full bg-transparent px-3 py-2 text-sm outline-none"
+                className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-12 pr-4 text-base outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
-
-              {search && (
-                <button type="button" onClick={() => setSearch("")} className="text-xs font-bold text-slate-500 hover:text-slate-800">
-                  Clear
-                </button>
-              )}
             </div>
           </label>
 
           {error && (
-            <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+            <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
               {error}
+            </div>
+          )}
+
+          {notice && (
+            <div className="mt-5 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-700">
+              {notice}
+            </div>
+          )}
+
+          {recordsLoading && (
+            <div className="mt-5 text-sm font-semibold text-slate-500">
+              Loading record list...
             </div>
           )}
         </section>
 
-        <section className="mt-5 space-y-4">
+        <section className="space-y-6">
           {loading ? (
-            <div className="rounded-3xl bg-white p-10 text-center text-sm font-semibold text-slate-600 shadow-sm">
-              Loading verified issues...
+            <div className="rounded-3xl bg-white p-12 text-center shadow-sm">
+              <Loader2 className="mx-auto h-8 w-8 animate-spin text-blue-600" />
+              <p className="mt-4 font-semibold text-slate-600">
+                Loading verified issues...
+              </p>
             </div>
-          ) : filteredIssues.length ? (
+          ) : filteredIssues.length > 0 ? (
             filteredIssues.map((issue) => (
               <IssueCard
                 key={issue.id}
                 issue={issue}
-                onUpdate={updateIssue}
-                updatingId={updatingId}
-                onToast={showToast}
+                draft={drafts[issue.id] || {}}
+                onDraftChange={updateDraft}
+                onSave={saveIssue}
+                onResolve={markResolved}
+                saving={savingIssueId === issue.id}
               />
             ))
           ) : (
-            <div className="rounded-3xl bg-white p-10 text-center shadow-sm">
-              <div className="text-lg font-black text-slate-950">No issues found</div>
-              <p className="mt-2 text-sm text-slate-600">Adjust filters or load a different record ID.</p>
+            <div className="rounded-3xl bg-white p-12 text-center shadow-sm">
+              <div className="text-xl font-black text-slate-950">
+                No issues found
+              </div>
+              <p className="mt-2 text-slate-600">
+                Adjust filters or load a different record ID.
+              </p>
             </div>
           )}
         </section>
