@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# HomeFax local patch backups
+.env.local.backup*
+src/**/*_backup_before_*.jsx
