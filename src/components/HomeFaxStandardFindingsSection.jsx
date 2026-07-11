@@ -294,18 +294,6 @@ export default function HomeFaxStandardFindingsSection() {
     setError("");
 
     try {
-      const url = `${apiBaseUrl}/records/${encodeURIComponent(
-        recordId
-      )}/homefax-standard-report-preview-clean-v4?limit=100`;
-
-      const response = await fetch(url);
-
-      if (!response.ok) {
-        throw new Error(`Request failed: ${response.status}`);
-      }
-
-      const data = await response.json();
-
       const verifiedUrl = `${apiBaseUrl}/verified-issues/${encodeURIComponent(recordId)}`;
       const verifiedResponse = await fetch(verifiedUrl);
 
@@ -313,10 +301,37 @@ export default function HomeFaxStandardFindingsSection() {
 
       if (verifiedResponse.ok) {
         verifiedData = await verifiedResponse.json();
+        setVerifiedPayload(verifiedData);
       }
 
-      setPayload(data);
-      setVerifiedPayload(verifiedData);
+      const previewUrl = `${apiBaseUrl}/records/${encodeURIComponent(
+        recordId
+      )}/homefax-standard-report-preview-clean-v4?limit=100`;
+
+      try {
+        const response = await fetch(previewUrl);
+
+        if (!response.ok) {
+          throw new Error(`Standard preview request failed: ${response.status}`);
+        }
+
+        const data = await response.json();
+        setPayload(data);
+      } catch (previewErr) {
+        console.warn("Standard preview failed. Falling back to verified issues:", previewErr);
+
+        if (verifiedData?.issues?.length) {
+          setPayload({
+            success: true,
+            source: "verified_issues_fallback",
+            record_id: recordId,
+            issues: verifiedData.issues,
+          });
+          setError("");
+        } else {
+          throw previewErr;
+        }
+      }
     } catch (err) {
       setError(err.message || "Unable to load HomeFax standard findings.");
     } finally {
