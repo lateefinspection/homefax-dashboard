@@ -5112,10 +5112,33 @@ export default function VerifiedIssuesDashboardV1() {
   const [adminToolIssueIds, setAdminToolIssueIds] = useState({});
 
   const urlParams = new URLSearchParams(window.location.search);
+  const viewParam = String(urlParams.get("view") || urlParams.get("mode") || "").toLowerCase();
+  const adminParam = String(urlParams.get("admin") || "").toLowerCase();
+
   const isAdminMode =
-    urlParams.get("mode") === "admin" ||
-    urlParams.get("admin") === "1" ||
-    urlParams.get("admin") === "true";
+    viewParam === "admin" ||
+    adminParam === "1" ||
+    adminParam === "true";
+
+  const dashboardViewMode = isAdminMode ? "admin" : "homeowner";
+
+  const heroCopy = isAdminMode
+    ? {
+        badge: "Admin Review Mode",
+        title: "HomeFax Admin Verification",
+        description:
+          "Verify inspection findings, review supporting photos, approve or reject issue records, and lock the final HomeFax baseline for long-term monitoring.",
+        workflow:
+          "Admin workflow: review finding → confirm evidence photo → approve issue → final approve + lock baseline.",
+      }
+    : {
+        badge: "Homeowner Review Mode",
+        title: "Your HomeFax Inspection Review",
+        description:
+          "Review your inspection findings, choose what needs repair, what should be monitored, and what has already been handled.",
+        workflow:
+          "Homeowner workflow: read finding → inspect photo → choose a decision → add notes for your home-care plan.",
+      };
 
   async function loadHealth() {
     try {
@@ -5590,17 +5613,32 @@ export default function VerifiedIssuesDashboardV1() {
         <div className="rounded-3xl bg-slate-950 p-6 text-white shadow-sm">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <p className="text-sm font-semibold text-emerald-300">
-                HomeFax AI
-              </p>
-              <h1 className="mt-1 text-3xl font-black tracking-tight">
-                HomeFax Inspection Review
-              </h1>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
-                Review your inspection findings, choose what to monitor or repair,
-                and keep your home-care plan organized. 
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-sm font-semibold text-emerald-300">
+                  HomeFax AI
+                </p>
+                <span
+                  className={
+                    isAdminMode
+                      ? "rounded-full bg-blue-400 px-3 py-1 text-xs font-black text-blue-950"
+                      : "rounded-full bg-emerald-400 px-3 py-1 text-xs font-black text-emerald-950"
+                  }
+                >
+                  {heroCopy.badge}
+                </span>
+              </div>
 
+              <h1 className="mt-1 text-3xl font-black tracking-tight">
+                {heroCopy.title}
+              </h1>
+
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
+                {heroCopy.description}
               </p>
+
+              <div className="mt-3 max-w-4xl rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-xs font-semibold leading-5 text-slate-200">
+                {heroCopy.workflow}
+              </div>
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -5613,10 +5651,12 @@ export default function VerifiedIssuesDashboardV1() {
                   Last refreshed: {lastRefreshedAt}
                 </span>
               ) : null}
-              <Button variant="warning" onClick={hideOldNoise} disabled={loading}>
-                <XCircle className="h-4 w-4" />
-                Hide completed items
-              </Button>
+              {isAdminMode ? (
+                <Button variant="warning" onClick={hideOldNoise} disabled={loading}>
+                  <XCircle className="h-4 w-4" />
+                  Hide completed items
+                </Button>
+              ) : null}
             </div>
           </div>
         </div>
@@ -5628,10 +5668,12 @@ export default function VerifiedIssuesDashboardV1() {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <p className="text-sm font-bold text-slate-900">
-                Organized review folders
+                {isAdminMode ? "Admin verification folders" : "Your home-care review folders"}
               </p>
               <p className="mt-1 text-sm leading-6 text-slate-600">
-                Findings are grouped by home system. Open a finding to review the source, supporting photo, and next step.
+                {isAdminMode
+                  ? "Findings are grouped by home system so you can verify evidence, approve issue records, and lock the final baseline."
+                  : "Findings are grouped by home system so you can understand each issue, review the photo, and decide what should happen next."}
               </p>
             </div>
 
