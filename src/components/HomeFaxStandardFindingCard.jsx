@@ -553,6 +553,35 @@ export default function HomeFaxStandardFindingCard({ issue, apiBaseUrl, onRefres
   const finalApprovalStatus = pickFirst(localFinalApprovalStatus, issue.final_approval_status, "not_approved");
   const verifiedImageUrl = pickFirst(localVerifiedImageUrl, issue.verified_image_url, "");
 
+  const normalizedHomeownerDecision = String(savedDecision || "").toLowerCase();
+
+  const isMonitorDecision =
+    normalizedHomeownerDecision === "monitor" ||
+    normalizedHomeownerDecision === "monitor_this" ||
+    normalizedHomeownerDecision === "monitoring";
+
+  const adminDecisionSummary = isMonitorDecision
+    ? {
+        title: "Homeowner wants to monitor this item.",
+        description:
+          "Verify that the finding is real, confirm the evidence photo, approve the monitoring plan, then final approve and lock the baseline record.",
+        primaryActionLabel: "Approve Monitoring Plan",
+        primaryAdminDecision: "monitoring_plan_approved",
+        monitoringRequired: "yes",
+        targetStatus: "monitoring",
+      }
+    : {
+        title: savedDecisionLabel
+          ? `Homeowner decision: ${savedDecisionLabel}`
+          : "No homeowner decision saved yet.",
+        description:
+          "Review the finding, verify the evidence photo, approve or change the issue state, then final approve and lock when the record is ready.",
+        primaryActionLabel: "Approve Issue State",
+        primaryAdminDecision: "issue_state_approved",
+        monitoringRequired: "no",
+        targetStatus: currentStatus || "open",
+      };
+
   const reviewActions = [
     {
       value: "monitor",
@@ -694,6 +723,28 @@ export default function HomeFaxStandardFindingCard({ issue, apiBaseUrl, onRefres
       admin_image_decision,
       verified_image_url:
         admin_image_decision === "approved" ? primaryAdminImageUrl : "",
+      admin_note: adminNote,
+    });
+  }
+
+  async function submitAdminDecisionApproval() {
+    await submitAdminPatch(`/verified-issue/${issue.id}/admin-review`, {
+      admin_review_status: "approved",
+      admin_image_decision: adminImageDecision || "pending",
+      admin_decision: adminDecisionSummary.primaryAdminDecision,
+      monitoring_required: adminDecisionSummary.monitoringRequired,
+      current_status: adminDecisionSummary.targetStatus,
+      admin_note: adminNote,
+    });
+  }
+
+  async function submitAdminStateChangeNeeded() {
+    await submitAdminPatch(`/verified-issue/${issue.id}/admin-review`, {
+      admin_review_status: "needs_review",
+      admin_image_decision: adminImageDecision || "pending",
+      admin_decision: "state_change_needed",
+      monitoring_required: isMonitorDecision ? "pending" : "no",
+      current_status: "needs_review",
       admin_note: adminNote,
     });
   }
@@ -938,6 +989,29 @@ export default function HomeFaxStandardFindingCard({ issue, apiBaseUrl, onRefres
                 <ReviewStatePill label="Final Status" value={finalApprovalStatus} />
               </div>
 
+              <div className="mt-3 rounded-2xl border border-white/10 bg-white/10 p-4">
+                <div className="text-xs font-black uppercase tracking-wide text-slate-300">
+                  Homeowner Intent
+                </div>
+                <div className="mt-1 text-sm font-black text-white">
+                  {adminDecisionSummary.title}
+                </div>
+                <div className="mt-2 text-xs font-semibold leading-5 text-slate-300">
+                  {adminDecisionSummary.description}
+                </div>
+
+                {savedHomeownerNote ? (
+                  <div className="mt-3 rounded-xl bg-white/10 px-3 py-2">
+                    <div className="text-[11px] font-black uppercase tracking-wide text-slate-400">
+                      Homeowner Note
+                    </div>
+                    <div className="mt-1 text-xs font-semibold leading-5 text-slate-100">
+                      {savedHomeownerNote}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
               <div className="mt-3 rounded-2xl bg-white/10 p-3 text-xs font-semibold text-slate-200">
                 Primary admin image: {primaryAdminImageUrl || "No image available yet"}
               </div>
@@ -962,25 +1036,30 @@ export default function HomeFaxStandardFindingCard({ issue, apiBaseUrl, onRefres
               <div className={baselineLocked ? "hidden" : "mt-4 grid gap-3 lg:grid-cols-3"}>
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
                   <div className="mb-2 text-xs font-black uppercase tracking-wide text-slate-300">
-                    Admin Review
+                    Admin Verification
+                  </div>
+                  <div className="mb-3 text-xs font-semibold leading-5 text-slate-300">
+                    Admin verifies record quality and baseline readiness. Contractor decisions are not part of this admin workflow.
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
                       disabled={adminBusy || baselineLocked}
-                      onClick={() => submitAdminReview("approved", "pending")}
+                      onClick={submitAdminDecisionApproval}
                       className="rounded-full bg-emerald-400 px-3 py-2 text-xs font-black text-emerald-950 disabled:opacity-50"
                     >
-                      Approve Issue
+                      {adminDecisionSummary.primaryActionLabel}
                     </button>
+
                     <button
                       type="button"
                       disabled={adminBusy || baselineLocked}
-                      onClick={() => submitAdminReview("needs_review", "needs_review")}
+                      onClick={submitAdminStateChangeNeeded}
                       className="rounded-full bg-amber-300 px-3 py-2 text-xs font-black text-amber-950 disabled:opacity-50"
                     >
-                      Needs Review
+                      Needs State Change
                     </button>
+
                     <button
                       type="button"
                       disabled={adminBusy || baselineLocked}
