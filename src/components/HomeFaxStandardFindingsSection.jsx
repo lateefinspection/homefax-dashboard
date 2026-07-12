@@ -273,6 +273,27 @@ function pickCsvValue(...values) {
 }
 
 
+
+function isCompletedStandardIssue(issue) {
+  const baselineLocked = String(issue?.baseline_locked || "").toLowerCase();
+  const finalApproval = String(issue?.final_approval_status || "").toLowerCase();
+  const currentStatus = String(issue?.current_status || issue?.status || "").toLowerCase();
+  const hidden = String(issue?.hidden_from_review_queue || "").toLowerCase();
+
+  return (
+    baselineLocked === "yes" ||
+    baselineLocked === "true" ||
+    baselineLocked === "1" ||
+    baselineLocked === "locked" ||
+    finalApproval === "approved" ||
+    currentStatus === "closed" ||
+    currentStatus === "resolved" ||
+    hidden === "yes" ||
+    hidden === "true" ||
+    hidden === "1"
+  );
+}
+
 export default function HomeFaxStandardFindingsSection() {
   const apiBaseUrl = getApiBaseUrl();
   const recordId = getRecordIdFromUrl();
@@ -282,6 +303,7 @@ export default function HomeFaxStandardFindingsSection() {
   const [payload, setPayload] = useState(null);
   const [verifiedPayload, setVerifiedPayload] = useState(null);
   const [decisionFilter, setDecisionFilter] = useState("all");
+  const [hideCompleted, setHideCompleted] = useState(false);
   const [bulkExpandCommand, setBulkExpandCommand] = useState({ expanded: null, version: 0 });
   const [copyMessage, setCopyMessage] = useState("");
   const [copyText, setCopyText] = useState("");
@@ -421,8 +443,18 @@ export default function HomeFaxStandardFindingsSection() {
   const totalFindings = issues.length;
 
   const filteredIssues = useMemo(() => {
-    return issues.filter((issue) => decisionMatchesFilter(issue, decisionFilter));
-  }, [issues, decisionFilter]);
+    return issues.filter((issue) => {
+      if (!decisionMatchesFilter(issue, decisionFilter)) {
+        return false;
+      }
+
+      if (hideCompleted && isCompletedStandardIssue(issue)) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [issues, decisionFilter, hideCompleted]);
 
   const sortedFilteredIssues = useMemo(() => {
     return [...filteredIssues].sort(compareStandardIssues);
@@ -492,7 +524,7 @@ export default function HomeFaxStandardFindingsSection() {
           severity: pickCsvValue(issue.standard_severity, issue.severity),
 
           risk_reasons: issue.standard_risk_reasons || issue.risk_reasons || [],
-          plain_summary: pickCsvValue(issue.standard_plain_summary),
+          plain_summary: pickCsvValue(issue.standard_plain_summary, issue.plain_summary),
           recommended_trade: pickCsvValue(
             issue.standard_recommended_trade,
             issue.recommended_trade
@@ -518,6 +550,13 @@ export default function HomeFaxStandardFindingsSection() {
           ),
           candidate_image_count: issue.candidate_image_count ?? null,
           candidate_image_urls: issue.candidate_image_urls || [],
+
+          admin_review_status: pickCsvValue(issue.admin_review_status),
+          admin_image_decision: pickCsvValue(issue.admin_image_decision),
+          image_match_status: pickCsvValue(issue.image_match_status),
+          verified_image_url: pickCsvValue(issue.verified_image_url),
+          final_approval_status: pickCsvValue(issue.final_approval_status),
+          baseline_locked: pickCsvValue(issue.baseline_locked),
         };
       }),
     };
@@ -560,6 +599,15 @@ export default function HomeFaxStandardFindingsSection() {
       "Source Page",
       "Report Section",
       "Primary Image URL",
+      "Source Finding Text",
+      "HomeFax Explanation",
+      "Monitoring Plan",
+      "Admin Review Status",
+      "Admin Image Decision",
+      "Image Match Status",
+      "Verified Image URL",
+      "Final Approval Status",
+      "Baseline Locked",
     ];
 
     const rows = sortedFilteredIssues.map((issue) => {
@@ -583,6 +631,15 @@ export default function HomeFaxStandardFindingsSection() {
         pickCsvValue(issue.source_page),
         pickCsvValue(issue.source_report_section),
         pickCsvValue(issue.primary_image_url, issue.image_url, issue.verified_image_url),
+        pickCsvValue(issue.source_finding_text),
+        pickCsvValue(issue.standard_plain_summary, issue.plain_summary),
+        pickCsvValue(issue.standard_monitoring_plan, issue.monitoring_plan),
+        pickCsvValue(issue.admin_review_status),
+        pickCsvValue(issue.admin_image_decision),
+        pickCsvValue(issue.image_match_status),
+        pickCsvValue(issue.verified_image_url),
+        pickCsvValue(issue.final_approval_status),
+        pickCsvValue(issue.baseline_locked),
       ];
     });
 
@@ -902,6 +959,18 @@ export default function HomeFaxStandardFindingsSection() {
           </div>
 
           <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setHideCompleted((value) => !value)}
+              className={
+                hideCompleted
+                  ? "rounded-full bg-amber-600 px-3 py-2 text-xs font-black text-white shadow-sm hover:bg-amber-700"
+                  : "rounded-full border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-black text-amber-900 hover:bg-amber-100"
+              }
+            >
+              {hideCompleted ? "Showing active only" : "Hide completed"}
+            </button>
+
             <button
               type="button"
               onClick={() => setBulkExpandCommand((cmd) => ({ expanded: true, version: cmd.version + 1 }))}

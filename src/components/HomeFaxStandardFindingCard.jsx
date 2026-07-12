@@ -443,6 +443,7 @@ export default function HomeFaxStandardFindingCard({ issue, apiBaseUrl, onRefres
   const [localVerifiedImageUrl, setLocalVerifiedImageUrl] = useState(
     issue.verified_image_url || ""
   );
+  const [lightboxIndex, setLightboxIndex] = useState(null);
   const [localFinalApprovalStatus, setLocalFinalApprovalStatus] = useState(
     issue.final_approval_status || "not_approved"
   );
@@ -532,6 +533,8 @@ export default function HomeFaxStandardFindingCard({ issue, apiBaseUrl, onRefres
       : "";
 
   const images = useMemo(() => getImages(issue), [issue]);
+  const activeLightboxImage =
+    lightboxIndex !== null && images[lightboxIndex] ? images[lightboxIndex] : null;
 
   const primaryAdminImageUrl = pickFirst(
     issue.verified_image_url,
@@ -1181,19 +1184,24 @@ export default function HomeFaxStandardFindingCard({ issue, apiBaseUrl, onRefres
               {images.length ? (
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {images.slice(0, 6).map((image, index) => (
-                    <div
+                    <button
                       key={`${image.url}-${index}`}
-                      className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50"
+                      type="button"
+                      onClick={() => setLightboxIndex(index)}
+                      className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 text-left transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md"
                     >
                       <img
                         src={getImageUrl(apiBaseUrl, image.url)}
                         alt={`${title} evidence ${index + 1}`}
                         className="h-48 w-full object-cover"
                       />
-                      <div className="p-2 text-xs font-bold text-slate-600">
-                        {image.label}
+                      <div className="flex items-center justify-between gap-2 p-2 text-xs font-bold text-slate-600">
+                        <span>{image.label}</span>
+                        <span className="rounded-full bg-slate-900 px-2 py-1 text-[10px] font-black text-white">
+                          Zoom
+                        </span>
                       </div>
-                    </div>
+                    </button>
                   ))}
                 </div>
               ) : (
@@ -1205,6 +1213,141 @@ export default function HomeFaxStandardFindingCard({ issue, apiBaseUrl, onRefres
           </div>
         ) : null}
       </div>
+
+      {activeLightboxImage ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 p-4"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="max-h-[92vh] w-full max-w-6xl overflow-hidden rounded-3xl bg-white shadow-2xl">
+            <div className="flex flex-col gap-3 border-b border-slate-200 p-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <div className="text-sm font-black text-slate-950">
+                  {title}
+                </div>
+                <div className="mt-1 text-xs font-semibold text-slate-500">
+                  {activeLightboxImage.label} · Image {(lightboxIndex || 0) + 1} of {images.length}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setLightboxIndex((current) =>
+                      current === null ? 0 : Math.max(0, current - 1)
+                    )
+                  }
+                  disabled={lightboxIndex === 0}
+                  className="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 disabled:opacity-40"
+                >
+                  Previous
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setLightboxIndex((current) =>
+                      current === null ? 0 : Math.min(images.length - 1, current + 1)
+                    )
+                  }
+                  disabled={lightboxIndex === images.length - 1}
+                  className="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 disabled:opacity-40"
+                >
+                  Next
+                </button>
+
+                <a
+                  href={getImageUrl(apiBaseUrl, activeLightboxImage.url)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-full bg-blue-700 px-3 py-2 text-xs font-black text-white hover:bg-blue-800"
+                >
+                  Open full image
+                </a>
+
+                <button
+                  type="button"
+                  onClick={() => setLightboxIndex(null)}
+                  className="rounded-full bg-slate-950 px-3 py-2 text-xs font-black text-white hover:bg-slate-800"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+
+            <div className="max-h-[68vh] overflow-auto bg-slate-100 p-4">
+              <img
+                src={getImageUrl(apiBaseUrl, activeLightboxImage.url)}
+                alt={`${title} enlarged evidence`}
+                className="mx-auto max-h-[64vh] w-auto max-w-full rounded-2xl object-contain shadow-sm"
+              />
+            </div>
+
+            <div className="border-t border-slate-200 p-4">
+              {isAdminMode ? (
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="text-xs font-semibold leading-5 text-slate-600">
+                    Admin image review: verify this photo only when it clearly supports the finding.
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={adminBusy || baselineLocked}
+                      onClick={() =>
+                        submitAdminPatch(`/verified-issue/${issue.id}/image-verification`, {
+                          image_match_status: "verified",
+                          verified_image_url: activeLightboxImage.url,
+                          admin_note: adminNote,
+                        })
+                      }
+                      className="rounded-full bg-emerald-700 px-3 py-2 text-xs font-black text-white hover:bg-emerald-800 disabled:opacity-50"
+                    >
+                      Verify This Image
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={adminBusy || baselineLocked}
+                      onClick={() =>
+                        submitAdminPatch(`/verified-issue/${issue.id}/image-verification`, {
+                          image_match_status: "mismatch",
+                          verified_image_url: "",
+                          admin_note: adminNote,
+                        })
+                      }
+                      className="rounded-full bg-red-700 px-3 py-2 text-xs font-black text-white hover:bg-red-800 disabled:opacity-50"
+                    >
+                      Wrong Photo
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={adminBusy || baselineLocked}
+                      onClick={() =>
+                        submitAdminPatch(`/verified-issue/${issue.id}/image-verification`, {
+                          image_match_status: "needs_review",
+                          verified_image_url: "",
+                          admin_note: adminNote,
+                        })
+                      }
+                      className="rounded-full bg-amber-600 px-3 py-2 text-xs font-black text-white hover:bg-amber-700 disabled:opacity-50"
+                    >
+                      Needs Image Review
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3 text-sm font-semibold text-blue-900">
+                  This supporting photo is provided to help you review the finding. Admin-only image verification controls are hidden in homeowner view.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </article>
   );
 }

@@ -5103,6 +5103,7 @@ export default function VerifiedIssuesDashboardV1() {
   const [aiImageMap, setAiImageMap] = useState({});
   const [reportSourceMap, setReportSourceMap] = useState({});
   const [reportSourceLoadingMap, setReportSourceLoadingMap] = useState({});
+  const [lastRefreshedAt, setLastRefreshedAt] = useState("");
 
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState("");
@@ -5311,12 +5312,28 @@ export default function VerifiedIssuesDashboardV1() {
   }, [selectedRecord]);
 
   async function refreshCurrent() {
-    await loadHealth();
+    setLoading(true);
+    setError("");
 
-    if (mode === "queue") {
-      await loadQueue();
-    } else {
-      await loadRecord();
+    try {
+      const jobs = [
+        loadHealth(),
+        loadRecords(),
+      ];
+
+      if (mode === "queue") {
+        jobs.push(loadQueue());
+      } else if (selectedRecord) {
+        jobs.push(loadRecord(selectedRecord));
+        jobs.push(loadAiImagePreview(selectedRecord, { loadAll: false }));
+      }
+
+      await Promise.allSettled(jobs);
+      setLastRefreshedAt(new Date().toLocaleTimeString());
+    } catch (refreshError) {
+      setError(refreshError?.message || "Dashboard refresh failed.");
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -5588,9 +5605,14 @@ export default function VerifiedIssuesDashboardV1() {
 
             <div className="flex flex-wrap gap-2">
               <Button variant="secondary" onClick={refreshCurrent} disabled={loading}>
-                <RefreshCw className="h-4 w-4" />
+                <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
                 Refresh
               </Button>
+              {lastRefreshedAt ? (
+                <span className="rounded-full border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-bold text-slate-300">
+                  Last refreshed: {lastRefreshedAt}
+                </span>
+              ) : null}
               <Button variant="warning" onClick={hideOldNoise} disabled={loading}>
                 <XCircle className="h-4 w-4" />
                 Hide completed items
