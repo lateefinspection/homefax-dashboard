@@ -697,9 +697,18 @@ export default function HomeFaxStandardFindingCard({ issue, apiBaseUrl, onRefres
         headers: {
           "Content-Type": "application/json",
         },
+        // Homeowner Image Selection Save Pass 1B
         body: JSON.stringify({
           decision,
           note: localDecisionNote,
+          homeowner_image_decision:
+            decision === "wrong_photo"
+              ? "mismatch"
+              : primaryAdminImageUrl
+                ? "selected"
+                : "no_image",
+          homeowner_selected_image_url: primaryAdminImageUrl || "",
+          homeowner_selected_image_note: localDecisionNote || "",
         }),
       });
 
