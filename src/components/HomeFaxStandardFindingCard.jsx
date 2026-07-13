@@ -411,6 +411,29 @@ function ReviewActionButton({
 
 
 // Dashboard Image Verification Context Pass 1
+
+function getMonitoringPlanText({ decision, trigger, system, component, title }) {
+  const label = [title, system, component].filter(Boolean).join(" / ");
+
+  if (trigger === "weather_rain_wind") {
+    return `Monitor ${label || "this issue"} during and after heavy rain or high winds for water entry, loose materials, staining, leaks, movement, or worsening exterior conditions.`;
+  }
+
+  if (trigger === "leak_moisture") {
+    return `Monitor ${label || "this issue"} for leaks, moisture, staining, dampness, odors, mold risk, or recurring water damage.`;
+  }
+
+  if (trigger === "safety_recurrence") {
+    return `Monitor ${label || "this issue"} for safety changes, recurrence, worsening conditions, or new evidence until corrected.`;
+  }
+
+  if (decision === "needs_contractor" || decision === "repair_needed") {
+    return `Monitor ${label || "this issue"} until repair is completed, then continue post-repair follow-up for recurrence or worsening conditions.`;
+  }
+
+  return `Monitor ${label || "this issue"} for changes, recurrence, worsening conditions, or related evidence updates.`;
+}
+
 function AdminImagePreviewCard({
   label,
   imageUrl,
@@ -486,6 +509,17 @@ export default function HomeFaxStandardFindingCard({ issue, apiBaseUrl, onRefres
 
   const [reviewBusy, setReviewBusy] = useState(false);
   const [reviewError, setReviewError] = useState("");
+
+  // Dual Action + Monitoring Decision Pass 1
+  const [alsoMonitorIssue, setAlsoMonitorIssue] = useState(
+    ["yes", "true", "1"].includes(String(issue.monitoring_required || "").toLowerCase())
+  );
+  const [monitoringTrigger, setMonitoringTrigger] = useState(
+    issue.monitoring_trigger || "general_watch"
+  );
+  const [postRepairMonitoringRequired, setPostRepairMonitoringRequired] = useState(
+    ["yes", "true", "1"].includes(String(issue.post_repair_monitoring_required || "").toLowerCase())
+  );
   const [adminBusy, setAdminBusy] = useState(false);
   const [adminError, setAdminError] = useState("");
   const [adminNote, setAdminNote] = useState("");
@@ -590,6 +624,9 @@ export default function HomeFaxStandardFindingCard({ issue, apiBaseUrl, onRefres
       ? currentStatus
       : "";
 
+  // Homeowner Explicit Image Selection UI Pass 1
+  const [selectedHomeownerImageUrl, setSelectedHomeownerImageUrl] = useState("");
+
   const images = useMemo(() => getImages(issue), [issue]);
   const activeLightboxImage =
     lightboxIndex !== null && images[lightboxIndex] ? images[lightboxIndex] : null;
@@ -598,6 +635,13 @@ export default function HomeFaxStandardFindingCard({ issue, apiBaseUrl, onRefres
     issue.verified_image_url,
     issue.image_url,
     images?.[0]?.url,
+    ""
+  );
+
+  const homeownerSelectedImageUrl = pickFirst(
+    selectedHomeownerImageUrl,
+    issue.homeowner_selected_image_url,
+    primaryAdminImageUrl,
     ""
   );
 
@@ -704,11 +748,30 @@ export default function HomeFaxStandardFindingCard({ issue, apiBaseUrl, onRefres
           homeowner_image_decision:
             decision === "wrong_photo"
               ? "mismatch"
-              : primaryAdminImageUrl
+              : homeownerSelectedImageUrl
                 ? "selected"
                 : "no_image",
-          homeowner_selected_image_url: primaryAdminImageUrl || "",
+          homeowner_selected_image_url: homeownerSelectedImageUrl || "",
           homeowner_selected_image_note: localDecisionNote || "",
+          monitoring_required:
+            decision === "monitor" || alsoMonitorIssue || postRepairMonitoringRequired
+              ? "yes"
+              : "no",
+          monitoring_trigger:
+            decision === "monitor" || alsoMonitorIssue || postRepairMonitoringRequired
+              ? monitoringTrigger
+              : "",
+          monitoring_plan_text:
+            decision === "monitor" || alsoMonitorIssue || postRepairMonitoringRequired
+              ? getMonitoringPlanText({
+                  decision,
+                  trigger: monitoringTrigger,
+                  system,
+                  component,
+                  title,
+                })
+              : "",
+          post_repair_monitoring_required: postRepairMonitoringRequired ? "yes" : "no",
         }),
       });
 
@@ -1013,6 +1076,7 @@ export default function HomeFaxStandardFindingCard({ issue, apiBaseUrl, onRefres
                 ))}
               </div>
 
+
               <div className="mt-4">
                 <label className="text-xs font-bold uppercase tracking-wide text-slate-500">
                   Optional note
@@ -1024,6 +1088,70 @@ export default function HomeFaxStandardFindingCard({ issue, apiBaseUrl, onRefres
                   placeholder="Add a note for this decision..."
                   className="mt-1 w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
                 />
+              </div>
+
+              <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50 p-4">
+                <div className="text-sm font-black text-blue-950">
+                  Monitoring Add-On
+                </div>
+                <p className="mt-1 text-xs font-semibold leading-5 text-blue-900">
+                  Some findings need repair or a contractor and still need HomeFax monitoring. Example: missing flashing may need a contractor and monitoring during rain or high winds until repaired.
+                </p>
+
+                <label className="mt-3 flex items-start gap-3 rounded-2xl bg-white p-3">
+                  <input
+                    type="checkbox"
+                    checked={alsoMonitorIssue}
+                    onChange={(event) => setAlsoMonitorIssue(event.target.checked)}
+                    disabled={reviewBusy || baselineLocked}
+                    className="mt-1"
+                  />
+                  <span>
+                    <span className="block text-sm font-black text-slate-950">
+                      Also monitor this issue over time
+                    </span>
+                    <span className="block text-xs font-semibold leading-5 text-slate-600">
+                      Use this when the item needs repair or contractor action but should still be watched for weather, leaks, recurrence, or worsening conditions.
+                    </span>
+                  </span>
+                </label>
+
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  <label className="block">
+                    <span className="text-xs font-black uppercase tracking-wide text-blue-900">
+                      Monitoring trigger
+                    </span>
+                    <select
+                      value={monitoringTrigger}
+                      onChange={(event) => setMonitoringTrigger(event.target.value)}
+                      disabled={reviewBusy || baselineLocked || !alsoMonitorIssue}
+                      className="mt-1 w-full rounded-2xl border border-blue-100 bg-white px-3 py-2 text-sm font-semibold text-slate-900 disabled:opacity-50"
+                    >
+                      <option value="general_watch">General condition watch</option>
+                      <option value="weather_rain_wind">Weather: rain / high wind</option>
+                      <option value="leak_moisture">Leak / moisture risk</option>
+                      <option value="safety_recurrence">Safety / recurrence risk</option>
+                    </select>
+                  </label>
+
+                  <label className="flex items-start gap-3 rounded-2xl bg-white p-3">
+                    <input
+                      type="checkbox"
+                      checked={postRepairMonitoringRequired}
+                      onChange={(event) => setPostRepairMonitoringRequired(event.target.checked)}
+                      disabled={reviewBusy || baselineLocked}
+                      className="mt-1"
+                    />
+                    <span>
+                      <span className="block text-sm font-black text-slate-950">
+                        Continue monitoring after repair
+                      </span>
+                      <span className="block text-xs font-semibold leading-5 text-slate-600">
+                        Recommended for roof, water, electrical safety, and recurring issues.
+                      </span>
+                    </span>
+                  </label>
+                </div>
               </div>
             </>
           )}
@@ -1352,33 +1480,78 @@ export default function HomeFaxStandardFindingCard({ issue, apiBaseUrl, onRefres
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-white p-4">
-              <div className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-900">
-                <Camera className="h-4 w-4" />
-                Evidence Photos
+              <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-2 text-sm font-bold text-slate-900">
+                  <Camera className="h-4 w-4" />
+                  Evidence Photos
+                </div>
+
+                {homeownerSelectedImageUrl ? (
+                  <div className="rounded-full bg-blue-100 px-3 py-1 text-xs font-black text-blue-900">
+                    Selected image ready for homeowner review
+                  </div>
+                ) : (
+                  <div className="rounded-full bg-amber-100 px-3 py-1 text-xs font-black text-amber-900">
+                    Select an image before saving review
+                  </div>
+                )}
+              </div>
+
+              <div className="mb-3 rounded-2xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-semibold leading-5 text-blue-950">
+                Select the photo that belongs to this finding, then choose Monitor, Repair Needed, Wrong Photo, or another review action. Clicking the photo still opens zoom.
               </div>
 
               {images.length ? (
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {images.slice(0, 6).map((image, index) => (
-                    <button
-                      key={`${image.url}-${index}`}
-                      type="button"
-                      onClick={() => setLightboxIndex(index)}
-                      className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 text-left transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md"
-                    >
-                      <img
-                        src={getImageUrl(apiBaseUrl, image.url)}
-                        alt={`${title} evidence ${index + 1}`}
-                        className="h-48 w-full object-cover"
-                      />
-                      <div className="flex items-center justify-between gap-2 p-2 text-xs font-bold text-slate-600">
-                        <span>{image.label}</span>
-                        <span className="rounded-full bg-slate-900 px-2 py-1 text-[10px] font-black text-white">
-                          Zoom
-                        </span>
+                  {images.slice(0, 6).map((image, index) => {
+                    const isSelectedForHomeowner =
+                      homeownerSelectedImageUrl && image.url === homeownerSelectedImageUrl;
+
+                    return (
+                      <div
+                        key={`${image.url}-${index}`}
+                        className={
+                          isSelectedForHomeowner
+                            ? "overflow-hidden rounded-2xl border-4 border-blue-600 bg-blue-50 shadow-lg"
+                            : "overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md"
+                        }
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setLightboxIndex(index)}
+                          className="block w-full text-left"
+                        >
+                          <img
+                            src={getImageUrl(apiBaseUrl, image.url)}
+                            alt={`${title} evidence ${index + 1}`}
+                            className="h-48 w-full object-cover"
+                          />
+                          <div className="flex items-center justify-between gap-2 p-2 text-xs font-bold text-slate-600">
+                            <span>{image.label}</span>
+                            <span className="rounded-full bg-slate-900 px-2 py-1 text-[10px] font-black text-white">
+                              Zoom
+                            </span>
+                          </div>
+                        </button>
+
+                        <div className="border-t border-slate-200 bg-white p-2">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedHomeownerImageUrl(image.url)}
+                            className={
+                              isSelectedForHomeowner
+                                ? "w-full rounded-xl bg-blue-700 px-3 py-2 text-xs font-black text-white"
+                                : "w-full rounded-xl border border-blue-200 bg-white px-3 py-2 text-xs font-black text-blue-800 hover:bg-blue-50"
+                            }
+                          >
+                            {isSelectedForHomeowner
+                              ? "Selected For This Finding"
+                              : "Use This Image For This Finding"}
+                          </button>
+                        </div>
                       </div>
-                    </button>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="text-sm text-slate-600">
