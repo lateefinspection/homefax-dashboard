@@ -295,6 +295,7 @@ function isCompletedStandardIssue(issue) {
 }
 
 export default function HomeFaxStandardFindingsSection() {
+  // Dashboard Monitoring Timeline Pass 1A
   const apiBaseUrl = getApiBaseUrl();
   const recordId = getRecordIdFromUrl();
 
@@ -302,11 +303,46 @@ export default function HomeFaxStandardFindingsSection() {
   const [error, setError] = useState("");
   const [payload, setPayload] = useState(null);
   const [verifiedPayload, setVerifiedPayload] = useState(null);
+  const [monitoringPlansPayload, setMonitoringPlansPayload] = useState(null);
+  const [monitoringEventsPayload, setMonitoringEventsPayload] = useState(null);
+  const [monitoringError, setMonitoringError] = useState("");
   const [decisionFilter, setDecisionFilter] = useState("all");
   const [hideCompleted, setHideCompleted] = useState(false);
   const [bulkExpandCommand, setBulkExpandCommand] = useState({ expanded: null, version: 0 });
   const [copyMessage, setCopyMessage] = useState("");
   const [copyText, setCopyText] = useState("");
+
+  async function loadMonitoringLifecycle({ quiet = false } = {}) {
+    try {
+      setMonitoringError("");
+
+      const [plansResponse, eventsResponse] = await Promise.all([
+        fetch(`${apiBaseUrl}/monitoring-plans/${encodeURIComponent(recordId)}`),
+        fetch(`${apiBaseUrl}/monitoring-events/${encodeURIComponent(recordId)}`),
+      ]);
+
+      const plansData = await plansResponse.json().catch(() => null);
+      const eventsData = await eventsResponse.json().catch(() => null);
+
+      if (!plansResponse.ok || plansData?.success === false) {
+        throw new Error(plansData?.detail || plansData?.message || "Could not load monitoring plans.");
+      }
+
+      if (!eventsResponse.ok || eventsData?.success === false) {
+        throw new Error(eventsData?.detail || eventsData?.message || "Could not load monitoring events.");
+      }
+
+      setMonitoringPlansPayload(plansData);
+      setMonitoringEventsPayload(eventsData);
+    } catch (err) {
+      setMonitoringPlansPayload(null);
+      setMonitoringEventsPayload(null);
+
+      if (!quiet) {
+        setMonitoringError(err.message || "Could not load monitoring lifecycle.");
+      }
+    }
+  }
 
   async function loadStandardFindings({ quiet = false } = {}) {
     if (!quiet) {
@@ -357,6 +393,8 @@ export default function HomeFaxStandardFindingsSection() {
     } catch (err) {
       setError(err.message || "Unable to load HomeFax standard findings.");
     } finally {
+      await loadMonitoringLifecycle({ quiet: true });
+
       if (!quiet) {
         setLoading(false);
       }
@@ -375,6 +413,18 @@ export default function HomeFaxStandardFindingsSection() {
 
     return () => {
       alive = false;
+    };
+  }, [apiBaseUrl, recordId]);
+
+  useEffect(() => {
+    function handleExternalMonitoringRefresh() {
+      loadMonitoringLifecycle({ quiet: true });
+    }
+
+    window.addEventListener("homefax:refresh-standard-findings", handleExternalMonitoringRefresh);
+
+    return () => {
+      window.removeEventListener("homefax:refresh-standard-findings", handleExternalMonitoringRefresh);
     };
   }, [apiBaseUrl, recordId]);
 
@@ -748,6 +798,41 @@ export default function HomeFaxStandardFindingsSection() {
     },
   ];
 
+  const monitoringPlans = monitoringPlansPayload?.monitoring_plans || [];
+  const monitoringEvents = monitoringEventsPayload?.events || [];
+
+  const latestMonitoringEvents = useMemo(() => {
+    return [...monitoringEvents].slice(0, 5);
+  }, [monitoringEvents]);
+
+  const monitoringPlanByIssueId = useMemo(() => {
+    const map = new Map();
+
+    for (const plan of monitoringPlans) {
+      if (plan?.source_issue_id !== undefined && plan?.source_issue_id !== null) {
+        map.set(String(plan.source_issue_id), plan);
+      }
+    }
+
+    return map;
+  }, [monitoringPlans]);
+
+  const monitoringEventCountByIssueId = useMemo(() => {
+    const map = new Map();
+
+    for (const event of monitoringEvents) {
+      if (event?.source_issue_id !== undefined && event?.source_issue_id !== null) {
+        const key = String(event.source_issue_id);
+        map.set(key, (map.get(key) || 0) + 1);
+      }
+    }
+
+    return map;
+  }, [monitoringEvents]);
+
+  const monitoringEnabledIssueCount = monitoringPlans.length;
+  const monitoringEventCount = monitoringEvents.length;
+
   const locationStats = useMemo(() => {
     const counts = new Map();
 
@@ -869,6 +954,181 @@ export default function HomeFaxStandardFindingsSection() {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Dashboard Monitoring Timeline Pass 1A */}
+      <div className="rounded-3xl border border-blue-200 bg-blue-50/70 p-5 shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="text-sm font-black uppercase tracking-wide text-blue-800">
+              Monitoring Lifecycle
+            </div>
+            <h3 className="mt-1 text-xl font-black text-slate-950">
+              Active Monitoring Plans & Device Events
+            </h3>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-700">
+              Locked monitored findings can now create HomeFax monitoring plans. Device, sensor, manual, and future integration events attach to these plans and become part of the property timeline.
+            </p>
+            {monitoringError ? (
+              <div className="mt-3 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-800">
+                {monitoringError}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-2xl bg-white px-4 py-3 shadow-sm">
+              <div className="text-[11px] font-black uppercase tracking-wide text-slate-500">
+                Monitoring Plans
+              </div>
+              <div className="mt-1 text-2xl font-black text-blue-900">
+                {monitoringEnabledIssueCount}
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-white px-4 py-3 shadow-sm">
+              <div className="text-[11px] font-black uppercase tracking-wide text-slate-500">
+                Timeline Events
+              </div>
+              <div className="mt-1 text-2xl font-black text-blue-900">
+                {monitoringEventCount}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {monitoringPlans.length ? (
+          <div className="mt-5">
+            <div className="mb-2 text-sm font-black text-slate-900">
+              Active Monitoring Plans
+            </div>
+
+            <div className="grid gap-3 lg:grid-cols-2">
+              {monitoringPlans.slice(0, 4).map((plan) => {
+                const capabilities = Array.isArray(plan.allowed_capabilities)
+                  ? plan.allowed_capabilities
+                  : [];
+
+                const eventCount = monitoringEventCountByIssueId.get(String(plan.source_issue_id)) || 0;
+
+                return (
+                  <div
+                    key={plan.id || plan.source_issue_id}
+                    className="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-sm font-black text-slate-950">
+                        Issue #{plan.source_issue_id}
+                      </div>
+                      <span className="rounded-full bg-blue-700 px-3 py-1 text-xs font-black text-white">
+                        {plan.status || "active"}
+                      </span>
+                    </div>
+
+                    <div className="mt-2 text-sm font-bold text-slate-700">
+                      {plan.system || plan.component || plan.location || "Monitoring plan"}
+                    </div>
+
+                    <div className="mt-2 grid gap-2 text-xs font-semibold text-slate-600 sm:grid-cols-2">
+                      <div>
+                        <span className="font-black text-slate-800">Risk:</span>{" "}
+                        {plan.risk_type || "general_monitoring"}
+                      </div>
+                      <div>
+                        <span className="font-black text-slate-800">Events:</span>{" "}
+                        {eventCount}
+                      </div>
+                    </div>
+
+                    {plan.monitoring_plan_text ? (
+                      <div className="mt-3 rounded-xl bg-blue-50 px-3 py-2 text-xs font-semibold leading-5 text-blue-950">
+                        {plan.monitoring_plan_text}
+                      </div>
+                    ) : null}
+
+                    {capabilities.length ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {capabilities.map((capability) => (
+                          <span
+                            key={`${plan.id}-${capability}`}
+                            className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-[11px] font-black text-blue-900"
+                          >
+                            {capability}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className="mt-5 rounded-2xl border border-dashed border-blue-200 bg-white/70 p-4 text-sm font-semibold text-slate-600">
+            No active monitoring plans yet. When a monitored issue is final approved and locked, HomeFax will create a monitoring plan automatically.
+          </div>
+        )}
+
+        {latestMonitoringEvents.length ? (
+          <div className="mt-5">
+            <div className="mb-2 text-sm font-black text-slate-900">
+              Latest Monitoring Events
+            </div>
+
+            <div className="space-y-3">
+              {latestMonitoringEvents.map((event) => (
+                <div
+                  key={event.id}
+                  className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                >
+                  <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <div className="text-sm font-black text-slate-950">
+                        {event.title || "Monitoring event"}
+                      </div>
+                      <div className="mt-1 text-xs font-semibold text-slate-500">
+                        Issue #{event.source_issue_id || "unlinked"} · Plan #{event.monitoring_plan_id || "none"} · {event.provider || "unknown provider"}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-black text-white">
+                        {event.capability || "MANUAL_CHECK"}
+                      </span>
+                      <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-black text-amber-900">
+                        {event.severity || "info"}
+                      </span>
+                      <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-black text-blue-900">
+                        {event.event_status || "unreviewed"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {event.summary ? (
+                    <div className="mt-3 text-sm leading-6 text-slate-700">
+                      {event.summary}
+                    </div>
+                  ) : null}
+
+                  <div className="mt-3 grid gap-2 text-xs font-semibold text-slate-500 sm:grid-cols-3">
+                    <div>
+                      <span className="font-black text-slate-700">Device:</span>{" "}
+                      {event.device_name || event.device_id || "not specified"}
+                    </div>
+                    <div>
+                      <span className="font-black text-slate-700">Homeowner Ack:</span>{" "}
+                      {event.homeowner_acknowledged || "no"}
+                    </div>
+                    <div>
+                      <span className="font-black text-slate-700">Occurred:</span>{" "}
+                      {event.occurred_at || event.created_at || "not available"}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div className="sticky top-3 z-30 rounded-3xl border border-slate-200 bg-white/95 p-4 shadow-lg backdrop-blur">
@@ -1046,6 +1306,8 @@ export default function HomeFaxStandardFindingsSection() {
             key={issue.id || `${issue.source_item_number}-${issue.title}`}
             issue={issue}
             apiBaseUrl={apiBaseUrl}
+            monitoringPlan={monitoringPlanByIssueId.get(String(issue.id))}
+            monitoringEventCount={monitoringEventCountByIssueId.get(String(issue.id)) || 0}
             forcedExpanded={bulkExpandCommand}
             onRefresh={() => loadStandardFindings({ quiet: true })}
           />
