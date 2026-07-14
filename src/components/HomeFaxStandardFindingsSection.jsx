@@ -616,7 +616,14 @@ export default function HomeFaxStandardFindingsSection() {
         // Live workflow/admin state from /verified-issues
         homeowner_decision: verified.homeowner_decision,
         homeowner_note: verified.homeowner_note,
+        // Homeowner Selected Image Merge Patch
         homeowner_image_decision: verified.homeowner_image_decision,
+        homeowner_selected_image_url:
+          verified.homeowner_selected_image_url || issue.homeowner_selected_image_url || "",
+        homeowner_selected_image_note:
+          verified.homeowner_selected_image_note || issue.homeowner_selected_image_note || "",
+        homeowner_selected_image_updated_at:
+          verified.homeowner_selected_image_updated_at || issue.homeowner_selected_image_updated_at || "",
         homeowner_reviewed_at: verified.homeowner_reviewed_at,
 
         admin_review_status: verified.admin_review_status,
