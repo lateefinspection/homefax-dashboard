@@ -454,6 +454,309 @@ function MonitoringPlanIntelligenceCard({ plan }) {
   );
 }
 
+
+// Monitoring Plan Expandable Evidence Drawer Pass 1
+function getAbsoluteImageUrl(apiBaseUrl, value) {
+  if (!value) return "";
+
+  const url = String(value).trim();
+
+  if (!url) return "";
+  if (url.startsWith("http://") || url.startsWith("https://")) return url;
+  if (url.startsWith("/")) return `${apiBaseUrl}${url}`;
+
+  return `${apiBaseUrl}/${url}`;
+}
+
+function pickMonitoringIssueField(issue, ...keys) {
+  if (!issue) return "";
+
+  for (const key of keys) {
+    const value = issue?.[key];
+
+    if (value !== undefined && value !== null && String(value).trim() !== "") {
+      return value;
+    }
+  }
+
+  return "";
+}
+
+function getIssueTitleForMonitoring(issue, plan) {
+  return (
+    issue?.title ||
+    issue?.source_finding_title ||
+    issue?.summary ||
+    `Issue #${plan?.source_issue_id || plan?.issue_id || plan?.id || "Unknown"}`
+  );
+}
+
+function MonitoringEvidenceImageCard({
+  label,
+  imageUrl,
+  apiBaseUrl,
+  note,
+  emptyText = "No image saved yet.",
+}) {
+  const absoluteUrl = getAbsoluteImageUrl(apiBaseUrl, imageUrl);
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-3">
+      <div className="text-[11px] font-black uppercase tracking-wide text-slate-500">
+        {label}
+      </div>
+
+      {note ? (
+        <div className="mt-1 text-xs font-semibold leading-5 text-slate-600">
+          {note}
+        </div>
+      ) : null}
+
+      {absoluteUrl ? (
+        <div className="mt-3">
+          <img
+            src={absoluteUrl}
+            alt={label}
+            className="h-40 w-full rounded-xl border border-slate-200 object-cover"
+            loading="lazy"
+          />
+
+          <a
+            href={absoluteUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-2 inline-flex text-xs font-black text-blue-700 hover:text-blue-900"
+          >
+            Open actual image
+          </a>
+
+          <div className="mt-1 break-all text-[11px] font-semibold text-slate-500">
+            {String(imageUrl)}
+          </div>
+        </div>
+      ) : (
+        <div className="mt-3 rounded-xl bg-slate-50 p-3 text-xs font-bold text-slate-500">
+          {emptyText}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MonitoringPlanEvidenceDrawer({
+  plan,
+  issue,
+  events = [],
+  apiBaseUrl,
+}) {
+  const title = getIssueTitleForMonitoring(issue, plan);
+
+  const location = pickMonitoringIssueField(
+    issue,
+    "location",
+    "standard_location",
+    "source_location",
+    "area",
+    "room"
+  );
+
+  const sourceText = pickMonitoringIssueField(
+    issue,
+    "source_text",
+    "original_finding",
+    "inspector_finding",
+    "summary",
+    "description"
+  );
+
+  const explanation = pickMonitoringIssueField(
+    issue,
+    "explanation",
+    "homefax_explanation",
+    "ai_explanation"
+  );
+
+  const recommendedAction = pickMonitoringIssueField(
+    issue,
+    "recommended_action",
+    "action",
+    "inspector_recommendation",
+    "recommendation"
+  );
+
+  const homeownerSelectedImageUrl = pickMonitoringIssueField(
+    issue,
+    "homeowner_selected_image_url",
+    "homeowner_selected_image",
+    "selected_homeowner_image_url"
+  );
+
+  const homeownerSelectedImageNote = pickMonitoringIssueField(
+    issue,
+    "homeowner_selected_image_note",
+    "homeowner_image_note"
+  );
+
+  const primaryAdminImageUrl = pickMonitoringIssueField(
+    issue,
+    "image_url",
+    "primary_image_url",
+    "candidate_image_url"
+  );
+
+  const verifiedImageUrl = pickMonitoringIssueField(
+    issue,
+    "verified_image_url",
+    "final_verified_image_url"
+  );
+
+  return (
+    <div className="mt-4 rounded-3xl border border-slate-200 bg-slate-50 p-4">
+      <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+        <div>
+          <div className="text-sm font-black text-slate-950">
+            Monitoring Record
+          </div>
+          <div className="mt-1 text-xs font-semibold leading-5 text-slate-600">
+            Source finding, evidence chain, and related monitoring events for this active plan.
+          </div>
+        </div>
+
+        <div className="rounded-full bg-slate-900 px-3 py-1 text-xs font-black text-white">
+          Issue #{plan?.source_issue_id || plan?.issue_id || "Unknown"}
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+        <div className="text-[11px] font-black uppercase tracking-wide text-slate-500">
+          Source Finding
+        </div>
+
+        <div className="mt-1 text-base font-black text-slate-950">
+          {title}
+        </div>
+
+        {location ? (
+          <div className="mt-2 rounded-xl bg-rose-50 p-3 text-xs font-bold text-rose-900">
+            Location / Area: {location}
+          </div>
+        ) : null}
+
+        {sourceText ? (
+          <div className="mt-3">
+            <div className="text-[11px] font-black uppercase tracking-wide text-slate-500">
+              Original Inspector Finding
+            </div>
+            <div className="mt-1 text-xs font-semibold leading-5 text-slate-700">
+              {sourceText}
+            </div>
+          </div>
+        ) : null}
+
+        {explanation ? (
+          <div className="mt-3">
+            <div className="text-[11px] font-black uppercase tracking-wide text-slate-500">
+              HomeFax Explanation
+            </div>
+            <div className="mt-1 text-xs font-semibold leading-5 text-slate-700">
+              {explanation}
+            </div>
+          </div>
+        ) : null}
+
+        {recommendedAction ? (
+          <div className="mt-3">
+            <div className="text-[11px] font-black uppercase tracking-wide text-slate-500">
+              Recommended Action
+            </div>
+            <div className="mt-1 text-xs font-semibold leading-5 text-slate-700">
+              {recommendedAction}
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="mt-4">
+        <div className="text-sm font-black text-slate-950">
+          Evidence Chain
+        </div>
+        <div className="mt-1 text-xs font-semibold leading-5 text-slate-600">
+          Compare homeowner-selected evidence, the current admin primary image, and the saved verified baseline image.
+        </div>
+
+        <div className="mt-3 grid gap-3 xl:grid-cols-3">
+          <MonitoringEvidenceImageCard
+            label="Homeowner Selected Image"
+            imageUrl={homeownerSelectedImageUrl}
+            apiBaseUrl={apiBaseUrl}
+            note={
+              homeownerSelectedImageNote ||
+              "Image selected by the homeowner for admin comparison."
+            }
+            emptyText="No homeowner-selected image is saved for this monitoring plan yet."
+          />
+
+          <MonitoringEvidenceImageCard
+            label="Primary Admin Image"
+            imageUrl={primaryAdminImageUrl}
+            apiBaseUrl={apiBaseUrl}
+            note="Current primary evidence image associated with this finding."
+            emptyText="No primary admin image is available for this monitoring plan yet."
+          />
+
+          <MonitoringEvidenceImageCard
+            label="Verified Baseline Image"
+            imageUrl={verifiedImageUrl}
+            apiBaseUrl={apiBaseUrl}
+            note="Image saved as verified baseline evidence after admin approval."
+            emptyText="No verified baseline image is saved for this monitoring plan yet."
+          />
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+        <div className="text-sm font-black text-slate-950">
+          Related Monitoring Events
+        </div>
+
+        {events.length ? (
+          <div className="mt-3 space-y-3">
+            {events.map((event) => (
+              <div
+                key={event.id || `${event.provider}-${event.occurred_at}`}
+                className="rounded-2xl border border-slate-200 bg-slate-50 p-3"
+              >
+                <div className="text-sm font-black text-slate-900">
+                  {event.title || event.event_title || event.provider || "Monitoring event"}
+                </div>
+
+                <div className="mt-1 text-xs font-bold text-slate-600">
+                  {event.capability || "Capability not set"} · {event.severity || "severity not set"} · {event.event_status || "status not set"}
+                </div>
+
+                {event.description ? (
+                  <div className="mt-2 text-xs font-semibold leading-5 text-slate-700">
+                    {event.description}
+                  </div>
+                ) : null}
+
+                <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-bold text-slate-500">
+                  {event.device_name ? <span>Device: {event.device_name}</span> : null}
+                  {event.occurred_at ? <span>Occurred: {event.occurred_at}</span> : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-3 rounded-xl bg-slate-50 p-3 text-xs font-bold text-slate-500">
+            No monitoring events are attached to this plan yet.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function HomeFaxStandardFindingsSection() {
   // Dashboard Monitoring Timeline Pass 1A
   const apiBaseUrl = getApiBaseUrl();
@@ -466,6 +769,7 @@ export default function HomeFaxStandardFindingsSection() {
   const [monitoringPlansPayload, setMonitoringPlansPayload] = useState(null);
   const [monitoringEventsPayload, setMonitoringEventsPayload] = useState(null);
   const [monitoringError, setMonitoringError] = useState("");
+  const [expandedMonitoringPlanIds, setExpandedMonitoringPlanIds] = useState(() => new Set());
   const [decisionFilter, setDecisionFilter] = useState("all");
   const [hideCompleted, setHideCompleted] = useState(false);
   const [bulkExpandCommand, setBulkExpandCommand] = useState({ expanded: null, version: 0 });
@@ -997,6 +1301,36 @@ export default function HomeFaxStandardFindingsSection() {
     return map;
   }, [monitoringEvents]);
 
+  const standardIssueByIdForMonitoring = useMemo(() => {
+    const map = new Map();
+
+    for (const issue of issues || []) {
+      if (issue?.id !== undefined && issue?.id !== null) {
+        map.set(String(issue.id), issue);
+      }
+    }
+
+    return map;
+  }, [issues]);
+
+  const monitoringEventsByIssueId = useMemo(() => {
+    const map = new Map();
+
+    for (const event of monitoringEvents) {
+      if (event?.source_issue_id !== undefined && event?.source_issue_id !== null) {
+        const key = String(event.source_issue_id);
+
+        if (!map.has(key)) {
+          map.set(key, []);
+        }
+
+        map.get(key).push(event);
+      }
+    }
+
+    return map;
+  }, [monitoringEvents]);
+
   const monitoringEnabledIssueCount = monitoringPlans.length;
   const monitoringEventCount = monitoringEvents.length;
 
@@ -1032,6 +1366,24 @@ export default function HomeFaxStandardFindingsSection() {
         <div className="mt-2 text-sm text-red-700">{error}</div>
       </section>
     );
+  }
+
+  function toggleMonitoringPlanExpanded(planId) {
+    const key = String(planId || "");
+
+    if (!key) return;
+
+    setExpandedMonitoringPlanIds((current) => {
+      const next = new Set(current);
+
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+
+      return next;
+    });
   }
 
   return (
@@ -1214,6 +1566,35 @@ export default function HomeFaxStandardFindingsSection() {
                     ) : null}
 
                     <MonitoringPlanIntelligenceCard plan={plan} />
+
+                    {(() => {
+                      const planKey = String(plan.id || plan.source_issue_id || plan.issue_id || "");
+                      const issueKey = String(plan.source_issue_id || plan.issue_id || "");
+                      const isExpanded = expandedMonitoringPlanIds.has(planKey);
+                      const matchedIssue = standardIssueByIdForMonitoring.get(issueKey);
+                      const relatedEvents = monitoringEventsByIssueId.get(issueKey) || [];
+
+                      return (
+                        <div className="mt-4">
+                          <button
+                            type="button"
+                            onClick={() => toggleMonitoringPlanExpanded(planKey)}
+                            className="inline-flex w-full items-center justify-center rounded-2xl border border-blue-200 bg-white px-4 py-3 text-sm font-black text-blue-800 shadow-sm hover:bg-blue-50"
+                          >
+                            {isExpanded ? "Hide Monitoring Record" : "View Monitoring Record"}
+                          </button>
+
+                          {isExpanded ? (
+                            <MonitoringPlanEvidenceDrawer
+                              plan={plan}
+                              issue={matchedIssue}
+                              events={relatedEvents}
+                              apiBaseUrl={apiBaseUrl}
+                            />
+                          ) : null}
+                        </div>
+                      );
+                    })()}
 
                     {capabilities.length ? (
                       <div className="mt-3 flex flex-wrap gap-2">
