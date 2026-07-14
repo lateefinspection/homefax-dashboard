@@ -434,6 +434,7 @@ function getMonitoringPlanText({ decision, trigger, system, component, title }) 
   return `Monitor ${label || "this issue"} for changes, recurrence, worsening conditions, or related evidence updates.`;
 }
 
+// Homeowner Selected Image Admin Preview Pass 1
 function AdminImagePreviewCard({
   label,
   imageUrl,
@@ -638,9 +639,28 @@ export default function HomeFaxStandardFindingCard({ issue, apiBaseUrl, onRefres
     ""
   );
 
+  // Homeowner Selected Image Admin Preview Pass 1
+  const savedHomeownerSelectedImageUrl = pickFirst(
+    issue.homeowner_selected_image_url,
+    issue.homeowner_selected_image,
+    issue.selected_homeowner_image_url,
+    ""
+  );
+
+  const savedHomeownerSelectedImageNote = pickFirst(
+    issue.homeowner_selected_image_note,
+    issue.homeowner_image_note,
+    ""
+  );
+
+  const savedHomeownerImageDecision = pickFirst(
+    issue.homeowner_image_decision,
+    ""
+  );
+
   const homeownerSelectedImageUrl = pickFirst(
     selectedHomeownerImageUrl,
-    issue.homeowner_selected_image_url,
+    savedHomeownerSelectedImageUrl,
     primaryAdminImageUrl,
     ""
   );
@@ -1228,7 +1248,18 @@ export default function HomeFaxStandardFindingCard({ issue, apiBaseUrl, onRefres
                   </div>
                 </div>
 
-                <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                <div className="mt-4 grid gap-3 xl:grid-cols-3">
+                  <AdminImagePreviewCard
+                    label="Homeowner Selected Image"
+                    imageUrl={savedHomeownerSelectedImageUrl}
+                    apiBaseUrl={apiBaseUrl}
+                    note={
+                      savedHomeownerSelectedImageNote ||
+                      "This is the image the homeowner selected for this finding before admin verification."
+                    }
+                    emptyText="No homeowner-selected image has been saved yet."
+                  />
+
                   <AdminImagePreviewCard
                     label="Primary Admin Image"
                     imageUrl={primaryAdminImageUrl}
@@ -1244,6 +1275,28 @@ export default function HomeFaxStandardFindingCard({ issue, apiBaseUrl, onRefres
                     note="This is the image currently saved as verified evidence for the locked baseline."
                     emptyText="No verified image has been saved yet."
                   />
+                </div>
+
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                    <div className="text-[11px] font-black uppercase tracking-wide text-slate-400">
+                      Homeowner Image Decision
+                    </div>
+                    <div className="mt-1 text-sm font-black text-white">
+                      {formatDecisionLabel(savedHomeownerImageDecision || "unreviewed")}
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                    <div className="text-[11px] font-black uppercase tracking-wide text-slate-400">
+                      Homeowner Selected Image Status
+                    </div>
+                    <div className="mt-1 text-sm font-black text-white">
+                      {savedHomeownerSelectedImageUrl
+                        ? "Image selected and ready for admin comparison"
+                        : "No homeowner-selected image saved"}
+                    </div>
+                  </div>
                 </div>
               </div>
 
