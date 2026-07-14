@@ -294,6 +294,166 @@ function isCompletedStandardIssue(issue) {
   );
 }
 
+
+// Dashboard Monitoring Capabilities Display Pass 2B
+function parseMonitoringRules(rawRules) {
+  if (!rawRules) return null;
+
+  if (typeof rawRules === "object") {
+    return rawRules;
+  }
+
+  if (typeof rawRules === "string") {
+    try {
+      return JSON.parse(rawRules);
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
+function formatMonitoringLabel(value) {
+  if (!value) return "Not set";
+
+  return String(value)
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function normalizeCapabilityList(value) {
+  if (!value) return [];
+
+  if (Array.isArray(value)) {
+    return value.filter(Boolean);
+  }
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        return parsed.filter(Boolean);
+      }
+    } catch {
+      return value
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+    }
+  }
+
+  return [];
+}
+
+function MonitoringRuleGroup({ label, items }) {
+  const safeItems = Array.isArray(items) ? items.filter(Boolean) : [];
+
+  if (!safeItems.length) return null;
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-3">
+      <div className="text-[11px] font-black uppercase tracking-wide text-slate-500">
+        {label}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {safeItems.map((item) => (
+          <span
+            key={`${label}-${item}`}
+            className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700"
+          >
+            {formatMonitoringLabel(item)}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MonitoringPlanIntelligenceCard({ plan }) {
+  if (!plan) return null;
+
+  const capabilities = normalizeCapabilityList(plan.allowed_capabilities);
+  const rules = parseMonitoringRules(plan.monitoring_rules);
+  const postRepairMonitoring = ["yes", "true", "1"].includes(
+    String(plan.post_repair_monitoring_required || "").toLowerCase()
+  );
+
+  return (
+    <div className="mt-4 rounded-3xl border border-blue-100 bg-blue-50 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-sm font-black text-blue-950">
+            Monitoring Intelligence
+          </div>
+          <div className="mt-1 text-xs font-semibold leading-5 text-blue-900">
+            HomeFax matched this issue to monitoring capabilities, trigger rules, and post-repair watch settings.
+          </div>
+        </div>
+
+        <div className="rounded-full bg-blue-700 px-3 py-1 text-xs font-black text-white">
+          {formatMonitoringLabel(plan.risk_type)}
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <div className="rounded-2xl bg-white p-3">
+          <div className="text-[11px] font-black uppercase tracking-wide text-slate-500">
+            Trigger
+          </div>
+          <div className="mt-1 text-sm font-black text-slate-900">
+            {formatMonitoringLabel(plan.monitoring_trigger || rules?.trigger_group)}
+          </div>
+        </div>
+
+        <div className="rounded-2xl bg-white p-3">
+          <div className="text-[11px] font-black uppercase tracking-wide text-slate-500">
+            Plan Status
+          </div>
+          <div className="mt-1 text-sm font-black text-slate-900">
+            {formatMonitoringLabel(plan.status || plan.plan_status)}
+          </div>
+        </div>
+
+        <div className="rounded-2xl bg-white p-3">
+          <div className="text-[11px] font-black uppercase tracking-wide text-slate-500">
+            Post-Repair Watch
+          </div>
+          <div className="mt-1 text-sm font-black text-slate-900">
+            {postRepairMonitoring ? "Yes" : "No"}
+          </div>
+        </div>
+      </div>
+
+      {capabilities.length ? (
+        <div className="mt-4 rounded-2xl border border-blue-100 bg-white p-3">
+          <div className="text-[11px] font-black uppercase tracking-wide text-slate-500">
+            Allowed Capabilities
+          </div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {capabilities.map((capability) => (
+              <span
+                key={capability}
+                className="rounded-full bg-blue-100 px-3 py-1 text-xs font-black text-blue-900"
+              >
+                {formatMonitoringLabel(capability)}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {rules ? (
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <MonitoringRuleGroup label="Weather Rules" items={rules.weather_triggers} />
+          <MonitoringRuleGroup label="Device Rules" items={rules.device_triggers} />
+          <MonitoringRuleGroup label="Manual Rules" items={rules.manual_triggers} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function HomeFaxStandardFindingsSection() {
   // Dashboard Monitoring Timeline Pass 1A
   const apiBaseUrl = getApiBaseUrl();
@@ -1045,6 +1205,8 @@ export default function HomeFaxStandardFindingsSection() {
                         {plan.monitoring_plan_text}
                       </div>
                     ) : null}
+
+                    <MonitoringPlanIntelligenceCard plan={plan} />
 
                     {capabilities.length ? (
                       <div className="mt-3 flex flex-wrap gap-2">
