@@ -1070,6 +1070,274 @@ function HomeownerDeviceInsightCard({ event, apiBaseUrl, onRefresh }) {
   );
 }
 
+
+// Homeowner Device Connection Dashboard Pass 1
+function formatConnectionDate(value) {
+  if (!value) return "Not synced yet";
+
+  try {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleString();
+  } catch {
+    return String(value);
+  }
+}
+
+function getConnectionTone(connection) {
+  const status = String(connection?.connection_status || "").toLowerCase();
+  const health = String(connection?.health_status || "").toLowerCase();
+
+  if (status === "connected" && health === "healthy") return "good";
+  if (status === "pending" || health === "syncing") return "default";
+  if (status === "needs_reauth" || health === "warning" || health === "stale") return "warning";
+  if (status === "error" || health === "error" || status === "disconnected") return "urgent";
+  if (status === "disabled") return "muted";
+
+  return "default";
+}
+
+function DeviceConnectionCard({ connection }) {
+  const capabilities = Array.isArray(connection?.capabilities)
+    ? connection.capabilities
+    : normalizeDeviceInsightList(connection?.capabilities_json);
+
+  const tone = getConnectionTone(connection);
+
+  return (
+    <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Connected Source
+          </p>
+          <h3 className="mt-1 text-lg font-semibold text-slate-900">
+            {connection?.connection_label || formatDeviceInsightLabel(connection?.provider || "Device Source")}
+          </h3>
+          <p className="mt-1 text-sm text-slate-600">
+            Provider: {formatDeviceInsightLabel(connection?.provider || "unknown")}
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <DeviceInsightPill tone={tone}>
+            {formatDeviceInsightLabel(connection?.connection_status || "unknown")}
+          </DeviceInsightPill>
+          <DeviceInsightPill tone={tone}>
+            {formatDeviceInsightLabel(connection?.health_status || "unknown")}
+          </DeviceInsightPill>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+        <div className="rounded-xl bg-slate-50 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Devices
+          </p>
+          <p className="mt-1 text-sm font-semibold text-slate-900">
+            {connection?.device_count ?? 0}
+          </p>
+        </div>
+
+        <div className="rounded-xl bg-slate-50 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Last Sync
+          </p>
+          <p className="mt-1 text-sm font-semibold text-slate-900">
+            {formatConnectionDate(connection?.last_sync_at)}
+          </p>
+        </div>
+
+        <div className="rounded-xl bg-slate-50 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Last Event
+          </p>
+          <p className="mt-1 text-sm font-semibold text-slate-900">
+            {formatConnectionDate(connection?.last_event_at)}
+          </p>
+        </div>
+
+        <div className="rounded-xl bg-slate-50 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Account / Source ID
+          </p>
+          <p className="mt-1 break-words text-sm font-semibold text-slate-900">
+            {connection?.provider_account_id || "Not specified"}
+          </p>
+        </div>
+      </div>
+
+      {capabilities.length ? (
+        <div className="mt-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Capabilities
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {capabilities.map((capability) => (
+              <span
+                key={capability}
+                className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700"
+              >
+                {formatDeviceInsightLabel(capability)}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {connection?.notes ? (
+        <div className="mt-4 rounded-xl bg-slate-50 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Connection Notes
+          </p>
+          <p className="mt-1 text-sm text-slate-700">{connection.notes}</p>
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function HomeownerDeviceConnectionsSection({ apiBaseUrl, recordId }) {
+  const [connections, setConnections] = useState([]);
+  const [capabilityCounts, setCapabilityCounts] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState("");
+
+  async function loadDeviceConnections() {
+    if (!recordId || !apiBaseUrl) return;
+
+    setLoading(true);
+    setLoadError("");
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/device-connections/${recordId}`);
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        const message =
+          data?.detail?.message ||
+          data?.detail?.error ||
+          data?.message ||
+          `Device connections failed with status ${response.status}.`;
+        throw new Error(message);
+      }
+
+      setConnections(Array.isArray(data?.connections) ? data.connections : []);
+      setCapabilityCounts(data?.capability_counts || {});
+    } catch (err) {
+      setLoadError(err?.message || "Could not load connected home sources.");
+      setConnections([]);
+      setCapabilityCounts({});
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadDeviceConnections();
+  }, [apiBaseUrl, recordId]);
+
+  const connectedCount = connections.filter((connection) => {
+    return String(connection?.connection_status || "").toLowerCase() === "connected";
+  }).length;
+
+  const warningCount = connections.filter((connection) => {
+    const status = String(connection?.connection_status || "").toLowerCase();
+    const health = String(connection?.health_status || "").toLowerCase();
+    return ["needs_reauth", "error", "disconnected"].includes(status) ||
+      ["warning", "error", "stale"].includes(health);
+  }).length;
+
+  const capabilityEntries = Object.entries(capabilityCounts || {}).sort((a, b) => {
+    return String(a[0]).localeCompare(String(b[0]));
+  });
+
+  return (
+    <section className="mt-8 rounded-3xl border border-slate-200 bg-slate-50 p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Connected Home Sources
+          </p>
+          <h2 className="mt-1 text-xl font-semibold text-slate-900">
+            Device & Weather Connections
+          </h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+            These are the connected sources HomeFax can use to compile homeowner insights.
+            Normal device and weather telemetry is handled automatically by HomeFax.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <DeviceInsightPill tone="default">
+            {connections.length} Sources
+          </DeviceInsightPill>
+          <DeviceInsightPill tone={connectedCount ? "good" : "muted"}>
+            {connectedCount} Connected
+          </DeviceInsightPill>
+          {warningCount ? (
+            <DeviceInsightPill tone="warning">
+              {warningCount} Needs Attention
+            </DeviceInsightPill>
+          ) : (
+            <DeviceInsightPill tone="good">
+              Healthy
+            </DeviceInsightPill>
+          )}
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-600">
+          Loading connected home sources...
+        </div>
+      ) : null}
+
+      {loadError ? (
+        <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-5 text-sm font-medium text-red-700">
+          {loadError}
+        </div>
+      ) : null}
+
+      {!loading && !loadError && connections.length === 0 ? (
+        <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-white p-5 text-sm text-slate-600">
+          No connected home sources are registered yet.
+        </div>
+      ) : null}
+
+      {capabilityEntries.length ? (
+        <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Available Monitoring Capabilities
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {capabilityEntries.map(([capability, count]) => (
+              <span
+                key={capability}
+                className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-800"
+              >
+                {formatDeviceInsightLabel(capability)} · {count}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {connections.length ? (
+        <div className="mt-5 grid gap-4 xl:grid-cols-3">
+          {connections.map((connection) => (
+            <DeviceConnectionCard
+              key={connection?.id || `${connection?.provider}-${connection?.provider_account_id}`}
+              connection={connection}
+            />
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+
 function HomeownerDeviceEventInsightsSection({ apiBaseUrl, recordId }) {
   const [insights, setInsights] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -1916,6 +2184,11 @@ export default function HomeFaxStandardFindingsSection() {
       </div>
 
       {/* Dashboard Monitoring Timeline Pass 1A */}
+
+      <HomeownerDeviceConnectionsSection
+        apiBaseUrl={apiBaseUrl}
+        recordId={recordId}
+      />
 
       <HomeownerDeviceEventInsightsSection
         apiBaseUrl={apiBaseUrl}
