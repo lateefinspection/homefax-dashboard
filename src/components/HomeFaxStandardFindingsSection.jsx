@@ -757,6 +757,446 @@ function MonitoringPlanEvidenceDrawer({
   );
 }
 
+
+// Homeowner Device Event Insight Dashboard Pass 1
+function formatDeviceInsightLabel(value) {
+  return String(value || "")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function normalizeDeviceInsightList(value) {
+  if (!value) return [];
+
+  if (Array.isArray(value)) return value;
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  return [];
+}
+
+function getDeviceInsightTone(event) {
+  const severity = String(event?.severity || "").toLowerCase();
+  const status = String(event?.homeowner_confirmation_status || "").toLowerCase();
+
+  if (status === "handled") return "handled";
+  if (status === "not_relevant" || status === "denied") return "muted";
+  if (severity === "critical" || severity === "high") return "urgent";
+  if (severity === "medium") return "warning";
+
+  return "default";
+}
+
+function DeviceInsightPill({ children, tone = "default" }) {
+  const toneClass =
+    tone === "urgent"
+      ? "bg-red-100 text-red-800"
+      : tone === "warning"
+        ? "bg-amber-100 text-amber-800"
+        : tone === "good"
+          ? "bg-emerald-100 text-emerald-800"
+          : tone === "muted"
+            ? "bg-slate-100 text-slate-600"
+            : "bg-blue-100 text-blue-800";
+
+  return (
+    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${toneClass}`}>
+      {children}
+    </span>
+  );
+}
+
+function HomeownerDeviceInsightCard({ event, apiBaseUrl, onRefresh }) {
+  const [note, setNote] = useState(event?.homeowner_note || "");
+  const [busyStatus, setBusyStatus] = useState("");
+  const [error, setError] = useState("");
+  const [savedMessage, setSavedMessage] = useState("");
+
+  const tone = getDeviceInsightTone(event);
+  const relatedIssueIds = normalizeDeviceInsightList(event?.matched_issue_ids_json);
+  const matchConfidence =
+    event?.match_confidence === null || event?.match_confidence === undefined
+      ? null
+      : Number(event.match_confidence);
+
+  const insightTitle =
+    event?.compiled_insight_title ||
+    event?.title ||
+    "HomeFax device insight";
+
+  const insightSummary =
+    event?.compiled_insight_summary ||
+    event?.summary ||
+    "HomeFax received this device event and added it to your home record.";
+
+  const recommendedAction =
+    event?.recommended_homeowner_action ||
+    "Review this event and confirm whether it is relevant to your home.";
+
+  async function saveHomeownerConfirmation(nextStatus) {
+    if (!event?.id) {
+      setError("Missing device event id.");
+      return;
+    }
+
+    setBusyStatus(nextStatus);
+    setError("");
+    setSavedMessage("");
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/device-event/${event.id}/homeowner-confirmation`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          homeowner_confirmation_status: nextStatus,
+          homeowner_acknowledged: "yes",
+          homeowner_note: note,
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        const message =
+          data?.detail?.message ||
+          data?.detail?.error ||
+          data?.message ||
+          `Could not save confirmation. Status ${response.status}.`;
+        throw new Error(message);
+      }
+
+      setSavedMessage("Device insight updated.");
+      if (typeof onRefresh === "function") {
+        await onRefresh();
+      }
+    } catch (err) {
+      setError(err?.message || "Could not save device insight confirmation.");
+    } finally {
+      setBusyStatus("");
+    }
+  }
+
+  const actionButtons = [
+    {
+      status: "confirmed",
+      label: "I Checked This",
+      description: "I reviewed this device alert.",
+    },
+    {
+      status: "still_happening",
+      label: "Still Happening",
+      description: "This condition is still active.",
+    },
+    {
+      status: "handled",
+      label: "Mark Handled",
+      description: "I handled or resolved this.",
+    },
+    {
+      status: "not_relevant",
+      label: "Not Relevant",
+      description: "This does not apply to my home.",
+    },
+  ];
+
+  return (
+    <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            HomeFax Compiled Insight
+          </p>
+          <h3 className="mt-1 text-lg font-semibold text-slate-900">
+            {insightTitle}
+          </h3>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <DeviceInsightPill tone={tone}>
+            {formatDeviceInsightLabel(event?.severity || "info")}
+          </DeviceInsightPill>
+
+          <DeviceInsightPill tone="default">
+            {formatDeviceInsightLabel(event?.capability || "device event")}
+          </DeviceInsightPill>
+        </div>
+      </div>
+
+      <p className="mt-3 text-sm leading-6 text-slate-700">
+        {insightSummary}
+      </p>
+
+      <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">
+          Recommended Next Step
+        </p>
+        <p className="mt-1 text-sm leading-6 text-blue-900">
+          {recommendedAction}
+        </p>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+        <div className="rounded-xl bg-slate-50 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Provider
+          </p>
+          <p className="mt-1 text-sm font-semibold text-slate-900">
+            {formatDeviceInsightLabel(event?.provider || "unknown")}
+          </p>
+          {event?.device_name ? (
+            <p className="mt-1 text-xs text-slate-500">{event.device_name}</p>
+          ) : null}
+        </div>
+
+        <div className="rounded-xl bg-slate-50 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Related System
+          </p>
+          <p className="mt-1 text-sm font-semibold text-slate-900">
+            {event?.system || "Home system"}
+          </p>
+        </div>
+
+        <div className="rounded-xl bg-slate-50 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Match
+          </p>
+          <p className="mt-1 text-sm font-semibold text-slate-900">
+            {formatDeviceInsightLabel(event?.match_status || "unmatched")}
+          </p>
+          {matchConfidence !== null && !Number.isNaN(matchConfidence) ? (
+            <p className="mt-1 text-xs text-slate-500">
+              Confidence: {Math.round(matchConfidence * 100)}%
+            </p>
+          ) : null}
+        </div>
+
+        <div className="rounded-xl bg-slate-50 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Homeowner Status
+          </p>
+          <p className="mt-1 text-sm font-semibold text-slate-900">
+            {formatDeviceInsightLabel(event?.homeowner_confirmation_status || "pending")}
+          </p>
+          {event?.event_lifecycle_status ? (
+            <p className="mt-1 text-xs text-slate-500">
+              {formatDeviceInsightLabel(event.event_lifecycle_status)}
+            </p>
+          ) : null}
+        </div>
+      </div>
+
+      {relatedIssueIds.length ? (
+        <div className="mt-4 rounded-xl bg-slate-50 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Related HomeFax Finding IDs
+          </p>
+          <p className="mt-1 text-sm text-slate-700">
+            {relatedIssueIds.join(", ")}
+          </p>
+        </div>
+      ) : null}
+
+      {event?.match_reason ? (
+        <div className="mt-4 rounded-xl bg-slate-50 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            HomeFax Match Reason
+          </p>
+          <p className="mt-1 text-sm text-slate-700">{event.match_reason}</p>
+        </div>
+      ) : null}
+
+      <label className="mt-4 block">
+        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Homeowner Note
+        </span>
+        <textarea
+          value={note}
+          onChange={(eventChange) => setNote(eventChange.target.value)}
+          rows={3}
+          className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+          placeholder="Add what you checked, saw, or did."
+        />
+      </label>
+
+      <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        {actionButtons.map((action) => (
+          <button
+            key={action.status}
+            type="button"
+            disabled={Boolean(busyStatus)}
+            onClick={() => saveHomeownerConfirmation(action.status)}
+            className={`rounded-xl border px-3 py-3 text-left transition ${
+              event?.homeowner_confirmation_status === action.status
+                ? "border-slate-900 bg-slate-900 text-white"
+                : "border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-400 hover:bg-white"
+            } ${busyStatus ? "cursor-not-allowed opacity-60" : ""}`}
+          >
+            <span className="block text-sm font-semibold">
+              {busyStatus === action.status ? "Saving..." : action.label}
+            </span>
+            <span className={`mt-1 block text-xs ${
+              event?.homeowner_confirmation_status === action.status
+                ? "text-slate-200"
+                : "text-slate-500"
+            }`}>
+              {action.description}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {savedMessage || error ? (
+        <div className="mt-4">
+          {savedMessage ? (
+            <p className="text-sm font-semibold text-emerald-700">{savedMessage}</p>
+          ) : null}
+
+          {error ? (
+            <p className="text-sm font-semibold text-red-700">{error}</p>
+          ) : null}
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function HomeownerDeviceEventInsightsSection({ apiBaseUrl, recordId }) {
+  const [insights, setInsights] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState("");
+
+  async function loadDeviceInsights() {
+    if (!recordId || !apiBaseUrl) return;
+
+    setLoading(true);
+    setLoadError("");
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/device-events/${recordId}/insights`);
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        const message =
+          data?.detail?.message ||
+          data?.detail?.error ||
+          data?.message ||
+          `Device insights failed with status ${response.status}.`;
+        throw new Error(message);
+      }
+
+      setInsights(Array.isArray(data?.insights) ? data.insights : []);
+    } catch (err) {
+      setLoadError(err?.message || "Could not load device insights.");
+      setInsights([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadDeviceInsights();
+  }, [apiBaseUrl, recordId]);
+
+  const activeInsights = insights.filter((event) => {
+    const status = String(event?.homeowner_confirmation_status || "").toLowerCase();
+    return !["handled", "not_relevant", "denied"].includes(status);
+  });
+
+  const archivedInsights = insights.filter((event) => {
+    const status = String(event?.homeowner_confirmation_status || "").toLowerCase();
+    return ["handled", "not_relevant", "denied"].includes(status);
+  });
+
+  return (
+    <section className="mt-8 rounded-3xl border border-slate-200 bg-slate-50 p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Homeowner Device Monitoring
+          </p>
+          <h2 className="mt-1 text-xl font-semibold text-slate-900">
+            Active Device Alerts & HomeFax Insights
+          </h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+            HomeFax compiles homeowner-connected device, weather, and sensor events into
+            simple insight cards. Admin review is not required for normal device telemetry.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <DeviceInsightPill tone="default">
+            {insights.length} Total
+          </DeviceInsightPill>
+          <DeviceInsightPill tone={activeInsights.length ? "urgent" : "good"}>
+            {activeInsights.length} Active
+          </DeviceInsightPill>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-600">
+          Loading device insights...
+        </div>
+      ) : null}
+
+      {loadError ? (
+        <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-5 text-sm font-medium text-red-700">
+          {loadError}
+        </div>
+      ) : null}
+
+      {!loading && !loadError && activeInsights.length === 0 ? (
+        <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-white p-5 text-sm text-slate-600">
+          No active device insights need homeowner attention right now.
+        </div>
+      ) : null}
+
+      {activeInsights.length ? (
+        <div className="mt-5 space-y-4">
+          {activeInsights.map((event) => (
+            <HomeownerDeviceInsightCard
+              key={event?.id || `${event?.provider}-${event?.occurred_at}`}
+              event={event}
+              apiBaseUrl={apiBaseUrl}
+              onRefresh={loadDeviceInsights}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      {archivedInsights.length ? (
+        <details className="mt-5 rounded-2xl border border-slate-200 bg-white p-4">
+          <summary className="cursor-pointer text-sm font-semibold text-slate-700">
+            Show handled / archived device insights ({archivedInsights.length})
+          </summary>
+
+          <div className="mt-4 space-y-4">
+            {archivedInsights.map((event) => (
+              <HomeownerDeviceInsightCard
+                key={event?.id || `${event?.provider}-${event?.occurred_at}`}
+                event={event}
+                apiBaseUrl={apiBaseUrl}
+                onRefresh={loadDeviceInsights}
+              />
+            ))}
+          </div>
+        </details>
+      ) : null}
+    </section>
+  );
+}
+
+
 export default function HomeFaxStandardFindingsSection() {
   // Dashboard Monitoring Timeline Pass 1A
   const apiBaseUrl = getApiBaseUrl();
@@ -1476,6 +1916,12 @@ export default function HomeFaxStandardFindingsSection() {
       </div>
 
       {/* Dashboard Monitoring Timeline Pass 1A */}
+
+      <HomeownerDeviceEventInsightsSection
+        apiBaseUrl={apiBaseUrl}
+        recordId={recordId}
+      />
+
       <div className="rounded-3xl border border-blue-200 bg-blue-50/70 p-5 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
