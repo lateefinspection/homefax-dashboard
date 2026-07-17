@@ -759,6 +759,59 @@ function MonitoringPlanEvidenceDrawer({
 
 
 // Homeowner Device Event Insight Dashboard Pass 1
+
+// Homeowner Device Insight UX Polish Pass 1
+function cleanHomeFaxDisplayText(value) {
+  return String(value || "")
+    .replaceAll("Shut-Off", "Shut-Off")
+    .replaceAll("Shut-Off", "Shut-Off")
+    .replaceAll("Shut Oì", "Shut-Off")
+    .replaceAll("Main Water Shut-Off Valve", "Main Water Shut-Off Valve");
+}
+
+function isWeatherInsight(event) {
+  const provider = String(event?.provider || "").toLowerCase();
+  const sourceType = String(event?.source_type || "").toLowerCase();
+  const capability = String(event?.capability || "").toUpperCase();
+
+  return (
+    provider === "weather" ||
+    sourceType === "weather_event" ||
+    capability.startsWith("WEATHER_") ||
+    capability === "HUMIDITY"
+  );
+}
+
+function getInsightSourceLabel(event) {
+  if (isWeatherInsight(event)) return "Weather Alert";
+  return "Device Alert";
+}
+
+function getInsightReviewButtonLabel(event) {
+  return isWeatherInsight(event) ? "I reviewed this weather alert." : "I reviewed this alert.";
+}
+
+function getInsightSectionTitle() {
+  return "HomeFax Live Monitoring";
+}
+
+function getInsightSectionSubtitle() {
+  return "Live Alerts & HomeFax Insights";
+}
+
+function isInsightNeedsAttention(event) {
+  const severity = String(event?.severity || "").toLowerCase();
+  const homeownerStatus = String(event?.homeowner_confirmation_status || "").toLowerCase();
+  const alertStatus = String(event?.alert_status || "").toLowerCase();
+
+  return (
+    ["high", "critical", "urgent"].includes(severity) ||
+    ["pending", "still_happening"].includes(homeownerStatus) ||
+    alertStatus === "ready"
+  );
+}
+
+
 function formatDeviceInsightLabel(value) {
   return String(value || "")
     .replace(/_/g, " ")
@@ -889,7 +942,7 @@ function HomeownerDeviceInsightCard({ event, apiBaseUrl, onRefresh }) {
     {
       status: "confirmed",
       label: "I Checked This",
-      description: "I reviewed this device alert.",
+      description: "I reviewed this alert.",
     },
     {
       status: "still_happening",
@@ -1264,7 +1317,7 @@ function HomeownerDeviceConnectionsSection({ apiBaseUrl, recordId }) {
           </h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
             These are the connected sources HomeFax can use to compile homeowner insights.
-            Normal device and weather telemetry is handled automatically by HomeFax.
+            Normal device and weather alerts are interpreted automatically by HomeFax.
           </p>
         </div>
 
@@ -1390,10 +1443,10 @@ function HomeownerDeviceEventInsightsSection({ apiBaseUrl, recordId }) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Homeowner Device Monitoring
+            HomeFax Live Monitoring
           </p>
           <h2 className="mt-1 text-xl font-semibold text-slate-900">
-            Active Device Alerts & HomeFax Insights
+            Live Alerts & HomeFax Insights
           </h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
             HomeFax compiles homeowner-connected device, weather, and sensor events into
