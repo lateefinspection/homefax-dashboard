@@ -760,6 +760,7 @@ function MonitoringPlanEvidenceDrawer({
 
 // Homeowner Device Event Insight Dashboard Pass 1
 
+// Homeowner Live Monitoring Description Polish Pass 1
 // Homeowner Device Insight UX Polish Pass 1
 function cleanHomeFaxDisplayText(value) {
   return String(value || "")
@@ -1449,8 +1450,8 @@ function HomeownerDeviceEventInsightsSection({ apiBaseUrl, recordId }) {
             Live Alerts & HomeFax Insights
           </h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-            HomeFax compiles homeowner-connected device, weather, and sensor events into
-            simple insight cards. Admin review is not required for normal device telemetry.
+            HomeFax compiles connected device, weather, and sensor activity into
+            simple homeowner-ready insight cards. Admin review is not required for normal device telemetry.
           </p>
         </div>
 
