@@ -952,6 +952,7 @@ function DeviceInsightPill({ children, tone = "default" }) {
   );
 }
 
+// Device Insight Encoding Cleanup Pass 1
 function HomeownerDeviceInsightCard({ event, apiBaseUrl, onRefresh }) {
   const [note, setNote] = useState(event?.homeowner_note || "");
   const [busyStatus, setBusyStatus] = useState("");
@@ -965,19 +966,43 @@ function HomeownerDeviceInsightCard({ event, apiBaseUrl, onRefresh }) {
       ? null
       : Number(event.match_confidence);
 
-  const insightTitle =
+  const insightTitle = cleanHomeFaxDisplayText(
     event?.compiled_insight_title ||
-    event?.title ||
-    "HomeFax device insight";
+      event?.title ||
+      "HomeFax device insight"
+  );
 
-  const insightSummary =
+  const insightSummary = cleanHomeFaxDisplayText(
     event?.compiled_insight_summary ||
-    event?.summary ||
-    "HomeFax received this device event and added it to your home record.";
+      event?.summary ||
+      "HomeFax received this device event and added it to your home record."
+  );
 
-  const recommendedAction =
+  const recommendedAction = cleanHomeFaxDisplayText(
     event?.recommended_homeowner_action ||
-    "Review this event and confirm whether it is relevant to your home.";
+      "Review this event and confirm whether it is relevant to your home."
+  );
+
+  const providerLabel = cleanHomeFaxDisplayText(event?.provider || "HomeFax");
+  const deviceLabel = cleanHomeFaxDisplayText(
+    event?.device_name ||
+      event?.connection_label ||
+      event?.provider_label ||
+      event?.provider ||
+      "HomeFax source"
+  );
+  const relatedSystemLabel = cleanHomeFaxDisplayText(
+    event?.system ||
+      event?.related_system ||
+      event?.matched_system ||
+      "Unknown"
+  );
+  const matchReasonLabel = cleanHomeFaxDisplayText(
+    event?.match_reason || "No match reason saved yet."
+  );
+  const homeownerNoteLabel = cleanHomeFaxDisplayText(
+    event?.homeowner_note || event?.note || ""
+  );
 
   async function saveHomeownerConfirmation(nextStatus) {
     if (!event?.id) {
