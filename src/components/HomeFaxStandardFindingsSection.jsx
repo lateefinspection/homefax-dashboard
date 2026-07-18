@@ -800,6 +800,91 @@ function getInsightSectionSubtitle() {
   return "Live Alerts & HomeFax Insights";
 }
 
+
+// Homeowner Monitoring Insight Grouping Pass 1
+function getMonitoringInsightGroupKey(event) {
+  const homeownerStatus = String(event?.homeowner_confirmation_status || "").toLowerCase();
+  const lifecycleStatus = String(event?.event_lifecycle_status || event?.event_status || "").toLowerCase();
+  const alertStatus = String(event?.alert_status || "").toLowerCase();
+  const severity = String(event?.severity || "").toLowerCase();
+
+  if (["handled", "confirmed", "acknowledged_by_homeowner"].includes(homeownerStatus)) {
+    return "handled";
+  }
+
+  if (["handled", "confirmed", "acknowledged_by_homeowner", "resolved"].includes(lifecycleStatus)) {
+    return "handled";
+  }
+
+  if (["not_relevant", "dismissed"].includes(homeownerStatus)) {
+    return "not_relevant";
+  }
+
+  if (homeownerStatus === "not_required" || alertStatus === "not_sent") {
+    return "informational";
+  }
+
+  if (
+    ["high", "critical", "urgent"].includes(severity) ||
+    ["pending", "still_happening"].includes(homeownerStatus) ||
+    alertStatus === "ready"
+  ) {
+    return "needs_attention";
+  }
+
+  return "informational";
+}
+
+function getMonitoringInsightGroupMeta(groupKey) {
+  const groups = {
+    needs_attention: {
+      title: "Needs Attention",
+      description: "Review these alerts first. They may need homeowner confirmation, inspection, or follow-up.",
+    },
+    informational: {
+      title: "Informational",
+      description: "Useful context from HomeFax monitoring that does not currently require immediate action.",
+    },
+    handled: {
+      title: "Handled / Confirmed",
+      description: "Alerts already checked, confirmed, acknowledged, or resolved by the homeowner.",
+    },
+    not_relevant: {
+      title: "Not Relevant",
+      description: "Alerts marked as not applicable to this home or situation.",
+    },
+  };
+
+  return groups[groupKey] || groups.informational;
+}
+
+function groupMonitoringInsights(events) {
+  const grouped = {
+    needs_attention: [],
+    informational: [],
+    handled: [],
+    not_relevant: [],
+  };
+
+  for (const event of events || []) {
+    const key = getMonitoringInsightGroupKey(event);
+
+    if (!grouped[key]) {
+      grouped.informational.push(event);
+      continue;
+    }
+
+    grouped[key].push(event);
+  }
+
+  return grouped;
+}
+
+function getMonitoringInsightGroupOrder() {
+  return ["needs_attention", "informational", "handled", "not_relevant"];
+}
+
+
 function isInsightNeedsAttention(event) {
   const severity = String(event?.severity || "").toLowerCase();
   const homeownerStatus = String(event?.homeowner_confirmation_status || "").toLowerCase();
@@ -1484,15 +1569,47 @@ function HomeownerDeviceEventInsightsSection({ apiBaseUrl, recordId }) {
       ) : null}
 
       {activeInsights.length ? (
-        <div className="mt-5 space-y-4">
-          {activeInsights.map((event) => (
-            <HomeownerDeviceInsightCard
-              key={event?.id || `${event?.provider}-${event?.occurred_at}`}
-              event={event}
-              apiBaseUrl={apiBaseUrl}
-              onRefresh={loadDeviceInsights}
-            />
-          ))}
+        <div className="mt-5 space-y-5">
+          {getMonitoringInsightGroupOrder().map((groupKey) => {
+            const groupedMonitoringInsights = groupMonitoringInsights(activeInsights);
+            const groupEvents = groupedMonitoringInsights[groupKey] || [];
+            const groupMeta = getMonitoringInsightGroupMeta(groupKey);
+
+            if (!groupEvents.length) return null;
+
+            return (
+              <div
+                key={groupKey}
+                className="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm"
+              >
+                <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h4 className="text-sm font-bold uppercase tracking-wide text-slate-800">
+                      {groupMeta.title}
+                    </h4>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">
+                      {groupMeta.description}
+                    </p>
+                  </div>
+
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                    {groupEvents.length}
+                  </span>
+                </div>
+
+                <div className="space-y-4">
+                  {groupEvents.map((event) => (
+                    <HomeownerDeviceInsightCard
+                      key={event?.id || `${event?.provider}-${event?.occurred_at}`}
+                      event={event}
+                      apiBaseUrl={apiBaseUrl}
+                      onRefresh={loadDeviceInsights}
+                    />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
       ) : null}
 
