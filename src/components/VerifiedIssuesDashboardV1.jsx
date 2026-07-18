@@ -1,3 +1,5 @@
+// Device Insight Encoding Cleanup Pass 1D
+// Device Insight Encoding Cleanup Pass 1C
 import React, { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
@@ -3949,10 +3951,10 @@ function hfFinalDisplayText(value) {
     [/Qualiíed/gi, "Qualified"],
     [/Qualiﬁed/gi, "Qualified"],
     [/Qualiied/gi, "Qualified"],
-    [/Shut-Oì/gi, "Shut-off"],
-    [/Shut-Oﬀ/gi, "Shut-off"],
-    [/Oì/gi, "Off"],
-    [/Oﬀ/gi, "Off"],
+    [new RegExp("Shut-O\\xEC", "gi"), "Shut-off"],
+    [new RegExp("Shut-O" + "\\uFB00", "gi"), "Shut-off"],
+    [new RegExp("O\\xEC", "gi"), "Off"],
+    [new RegExp("O" + "\\uFB00", "gi"), "Off"],
     [/Main water shut-off valve/gi, "Main water shut-off valve"],
     [/Main Water Shut-Off/gi, "Main water shut-off"],
     [/Main Water Shut-off Valve/gi, "Main water shut-off valve"],
