@@ -226,6 +226,11 @@ function csvCell(value) {
   const text = String(value ?? "")
     .replace(/\r/g, " ")
     .replace(/\n/g, " ")
+    .replace(/Main Water Shut[-\s]*O(?:ff|f|i|\\xEC|\\u00EC|\\uFB00)\s*Valve/gi, "Main Water Shut-Off Valve")
+    .replace(/Main Water Shut[-\s]*Off\s*Valve/gi, "Main Water Shut-Off Valve")
+    .replace(/Main Water Shut\s+Off\s*Valve/gi, "Main Water Shut-Off Valve")
+    .replace(/Main Water Shut-Off\s*Valve/gi, "Main Water Shut-Off Valve")
+    .replace(/Shut-Off\s*Valve/gi, "Shut-Off Valve")
     .replace(/\s+/g, " ")
     .trim();
 
@@ -762,6 +767,7 @@ function MonitoringPlanEvidenceDrawer({
 
 // Homeowner Live Monitoring Description Polish Pass 1
 // Homeowner Device Insight UX Polish Pass 1
+// Device Insight Encoding Cleanup Pass 1E
 // Device Insight Encoding Cleanup Pass 1B
 function cleanHomeFaxDisplayText(value) {
   const raw = String(value || "");
@@ -773,6 +779,11 @@ function cleanHomeFaxDisplayText(value) {
     .replace(/Shut-.{1,4}\s+Valve/g, "Shut-Off Valve")
     .replace(/Shut\s*.{1,4}\s+Valve/g, "Shut-Off Valve")
     .replace(/Shut-.{1,4}\b/g, "Shut-Off")
+    .replace(/Main Water Shut[-\s]*O(?:ff|f|i|\\xEC|\\u00EC|\\uFB00)\s*Valve/gi, "Main Water Shut-Off Valve")
+    .replace(/Main Water Shut[-\s]*Off\s*Valve/gi, "Main Water Shut-Off Valve")
+    .replace(/Main Water Shut\s+Off\s*Valve/gi, "Main Water Shut-Off Valve")
+    .replace(/Main Water Shut-Off\s*Valve/gi, "Main Water Shut-Off Valve")
+    .replace(/Shut-Off\s*Valve/gi, "Shut-Off Valve")
     .replace(/\s+/g, " ")
     .trim();
 }

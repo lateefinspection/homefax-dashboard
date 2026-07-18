@@ -1,3 +1,4 @@
+// Device Insight Encoding Cleanup Pass 1E
 // Device Insight Encoding Cleanup Pass 1D
 // Device Insight Encoding Cleanup Pass 1C
 import React, { useEffect, useMemo, useState } from "react";
@@ -3294,7 +3295,12 @@ function normalizeHomeownerDisplayText(value) {
   }
 
   // Clean repeated spaces after replacements.
-  text = text.replace(/\s+/g, " ").trim();
+  text = text.replace(/Main Water Shut[-\s]*O(?:ff|f|i|\\xEC|\\u00EC|\\uFB00)\s*Valve/gi, "Main Water Shut-Off Valve")
+    .replace(/Main Water Shut[-\s]*Off\s*Valve/gi, "Main Water Shut-Off Valve")
+    .replace(/Main Water Shut\s+Off\s*Valve/gi, "Main Water Shut-Off Valve")
+    .replace(/Main Water Shut-Off\s*Valve/gi, "Main Water Shut-Off Valve")
+    .replace(/Shut-Off\s*Valve/gi, "Shut-Off Valve")
+    .replace(/\s+/g, " ").trim();
 
   return text;
 }
@@ -3671,7 +3677,12 @@ function hfSafeDisplayText(value) {
     text = text.replace(pattern, replacement);
   }
 
-  return text.replace(/\s+/g, " ").trim();
+  return text.replace(/Main Water Shut[-\s]*O(?:ff|f|i|\\xEC|\\u00EC|\\uFB00)\s*Valve/gi, "Main Water Shut-Off Valve")
+    .replace(/Main Water Shut[-\s]*Off\s*Valve/gi, "Main Water Shut-Off Valve")
+    .replace(/Main Water Shut\s+Off\s*Valve/gi, "Main Water Shut-Off Valve")
+    .replace(/Main Water Shut-Off\s*Valve/gi, "Main Water Shut-Off Valve")
+    .replace(/Shut-Off\s*Valve/gi, "Shut-Off Valve")
+    .replace(/\s+/g, " ").trim();
 }
 
 function hfSafeTitle(value, issue = {}) {
@@ -3967,7 +3978,12 @@ function hfFinalDisplayText(value) {
     text = text.replace(pattern, replacement);
   }
 
-  return text.replace(/\s+/g, " ").trim();
+  return text.replace(/Main Water Shut[-\s]*O(?:ff|f|i|\\xEC|\\u00EC|\\uFB00)\s*Valve/gi, "Main Water Shut-Off Valve")
+    .replace(/Main Water Shut[-\s]*Off\s*Valve/gi, "Main Water Shut-Off Valve")
+    .replace(/Main Water Shut\s+Off\s*Valve/gi, "Main Water Shut-Off Valve")
+    .replace(/Main Water Shut-Off\s*Valve/gi, "Main Water Shut-Off Valve")
+    .replace(/Shut-Off\s*Valve/gi, "Shut-Off Valve")
+    .replace(/\s+/g, " ").trim();
 }
 
 function hfFinalTitle(value, issue = {}) {
@@ -4858,7 +4874,12 @@ function CandidatePhotoGallery({
 
 
 function hfClarityText(value) {
-  return String(value || "").replace(/\s+/g, " ").trim();
+  return String(value || "").replace(/Main Water Shut[-\s]*O(?:ff|f|i|\\xEC|\\u00EC|\\uFB00)\s*Valve/gi, "Main Water Shut-Off Valve")
+    .replace(/Main Water Shut[-\s]*Off\s*Valve/gi, "Main Water Shut-Off Valve")
+    .replace(/Main Water Shut\s+Off\s*Valve/gi, "Main Water Shut-Off Valve")
+    .replace(/Main Water Shut-Off\s*Valve/gi, "Main Water Shut-Off Valve")
+    .replace(/Shut-Off\s*Valve/gi, "Shut-Off Valve")
+    .replace(/\s+/g, " ").trim();
 }
 
 function hfClarityCombinedText(issue = {}) {
