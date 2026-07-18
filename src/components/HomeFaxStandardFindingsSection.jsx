@@ -670,7 +670,7 @@ function MonitoringPlanEvidenceDrawer({
               Recommended Action
             </div>
             <div className="mt-1 text-xs font-semibold leading-5 text-slate-700">
-              {recommendedAction}
+              {cleanHomeFaxDisplayText(recommendedAction)}
             </div>
           </div>
         ) : null}
@@ -762,13 +762,21 @@ function MonitoringPlanEvidenceDrawer({
 
 // Homeowner Live Monitoring Description Polish Pass 1
 // Homeowner Device Insight UX Polish Pass 1
+// Device Insight Encoding Cleanup Pass 1B
 function cleanHomeFaxDisplayText(value) {
-  return String(value || "")
-    .replaceAll("Shut-Off", "Shut-Off")
-    .replaceAll("Shut-Off", "Shut-Off")
-    .replaceAll("Shut Oì", "Shut-Off")
-    .replaceAll("Main Water Shut-Off Valve", "Main Water Shut-Off Valve");
+  const raw = String(value || "");
+
+  return raw
+    // Fix known inspection/device mojibake without storing the bad literal in source.
+    .replace(/Main Water Shut-.{1,4}\s+Valve/g, "Main Water Shut-Off Valve")
+    .replace(/Main Water Shut\s*.{1,4}\s+Valve/g, "Main Water Shut-Off Valve")
+    .replace(/Shut-.{1,4}\s+Valve/g, "Shut-Off Valve")
+    .replace(/Shut\s*.{1,4}\s+Valve/g, "Shut-Off Valve")
+    .replace(/Shut-.{1,4}\b/g, "Shut-Off")
+    .replace(/\s+/g, " ")
+    .trim();
 }
+
 
 function isWeatherInsight(event) {
   const provider = String(event?.provider || "").toLowerCase();
@@ -995,6 +1003,7 @@ function HomeownerDeviceInsightCard({ event, apiBaseUrl, onRefresh }) {
     event?.system ||
       event?.related_system ||
       event?.matched_system ||
+      event?.monitoring_plan_title ||
       "Unknown"
   );
   const matchReasonLabel = cleanHomeFaxDisplayText(
@@ -1096,7 +1105,7 @@ function HomeownerDeviceInsightCard({ event, apiBaseUrl, onRefresh }) {
       </div>
 
       <p className="mt-3 text-sm leading-6 text-slate-700">
-        {insightSummary}
+        {cleanHomeFaxDisplayText(insightSummary)}
       </p>
 
       <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-4">
@@ -1104,7 +1113,7 @@ function HomeownerDeviceInsightCard({ event, apiBaseUrl, onRefresh }) {
           Recommended Next Step
         </p>
         <p className="mt-1 text-sm leading-6 text-blue-900">
-          {recommendedAction}
+          {cleanHomeFaxDisplayText(recommendedAction)}
         </p>
       </div>
 
