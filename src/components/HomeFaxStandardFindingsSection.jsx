@@ -1281,15 +1281,122 @@ function getConnectionTone(connection) {
   return "default";
 }
 
+
+// Device Connection Stale Source UI Polish Pass 1
+function normalizeConnectionStatus(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function getConnectionHealthMeta(connection) {
+  const provider = normalizeConnectionStatus(connection?.provider);
+  const connectionStatus = normalizeConnectionStatus(connection?.connection_status);
+  const healthStatus = normalizeConnectionStatus(connection?.health_status);
+
+  const isConnected = connectionStatus === "connected";
+  const isHealthy = healthStatus === "healthy";
+  const isStale = healthStatus === "stale";
+  const isWarning = ["warning", "needs_attention"].includes(healthStatus);
+  const isDisconnected = ["needs_reauth", "error", "disconnected", "failed"].includes(connectionStatus);
+
+  if (isDisconnected) {
+    return {
+      label: "Disconnected",
+      headline: "Needs reconnection",
+      description: "HomeFax cannot currently receive updates from this source. Reconnect it when ready.",
+      tone: "bad",
+      cardClass: "border-red-200 bg-red-50/50",
+      pillClass: "bg-red-100 text-red-700",
+    };
+  }
+
+  if (isConnected && isStale) {
+    const providerNote =
+      provider === "ting"
+        ? "Ting may not emit frequent events, but it should check in periodically. HomeFax will keep checking this source automatically."
+        : "This source is still connected, but HomeFax has not received a recent check-in or event from it.";
+
+    return {
+      label: "Connected / Stale",
+      headline: "Connected but needs a check-in",
+      description: providerNote,
+      tone: "warning",
+      cardClass: "border-amber-200 bg-amber-50/50",
+      pillClass: "bg-amber-100 text-amber-800",
+    };
+  }
+
+  if (isConnected && isWarning) {
+    return {
+      label: "Connected / Needs Attention",
+      headline: "Connected, but needs attention",
+      description: "HomeFax can still see this source, but its latest health check found something that may need review.",
+      tone: "warning",
+      cardClass: "border-amber-200 bg-amber-50/50",
+      pillClass: "bg-amber-100 text-amber-800",
+    };
+  }
+
+  if (isConnected && isHealthy) {
+    return {
+      label: "Connected / Healthy",
+      headline: "Connected and healthy",
+      description: "HomeFax is receiving current source health information.",
+      tone: "good",
+      cardClass: "border-emerald-200 bg-emerald-50/40",
+      pillClass: "bg-emerald-100 text-emerald-700",
+    };
+  }
+
+  if (isConnected) {
+    return {
+      label: "Connected",
+      headline: "Connected",
+      description: "HomeFax is tracking this source. Health status will update as new check-ins or events arrive.",
+      tone: "default",
+      cardClass: "border-slate-200 bg-white",
+      pillClass: "bg-slate-100 text-slate-700",
+    };
+  }
+
+  return {
+    label: healthStatus ? formatDeviceInsightLabel(healthStatus) : "Unknown",
+    headline: "Connection status unknown",
+    description: "HomeFax has this source saved, but its latest connection health is not clear yet.",
+    tone: "default",
+    cardClass: "border-slate-200 bg-white",
+    pillClass: "bg-slate-100 text-slate-700",
+  };
+}
+
+function getConnectionActivityLabel(connection) {
+  const lastSync = connection?.last_sync_at || "";
+  const lastEvent = connection?.last_event_at || "";
+
+  if (lastSync && lastEvent) {
+    return `Last sync ${formatConnectionDate(lastSync)} / last event ${formatConnectionDate(lastEvent)}`;
+  }
+
+  if (lastSync) {
+    return `Last sync ${formatConnectionDate(lastSync)}`;
+  }
+
+  if (lastEvent) {
+    return `Last event ${formatConnectionDate(lastEvent)}`;
+  }
+
+  return "No sync or event timestamp saved yet.";
+}
+
+
 function DeviceConnectionCard({ connection }) {
   const capabilities = Array.isArray(connection?.capabilities)
     ? connection.capabilities
     : normalizeDeviceInsightList(connection?.capabilities_json);
 
-  const tone = getConnectionTone(connection);
+  const healthMeta = getConnectionHealthMeta(connection);
 
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <article className={`rounded-2xl border p-5 shadow-sm ${healthMeta.cardClass}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -1301,20 +1408,28 @@ function DeviceConnectionCard({ connection }) {
           <p className="mt-1 text-sm text-slate-600">
             Provider: {formatDeviceInsightLabel(connection?.provider || "unknown")}
           </p>
+          <p className="mt-2 text-sm font-semibold text-slate-800">
+            {healthMeta.headline}
+          </p>
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <DeviceInsightPill tone={tone}>
-            {formatDeviceInsightLabel(connection?.connection_status || "unknown")}
-          </DeviceInsightPill>
-          <DeviceInsightPill tone={tone}>
-            {formatDeviceInsightLabel(connection?.health_status || "unknown")}
-          </DeviceInsightPill>
+          <span className={`rounded-full px-3 py-1 text-xs font-bold ${healthMeta.pillClass}`}>
+            {healthMeta.label}
+          </span>
         </div>
       </div>
 
+      <p className="mt-4 text-sm leading-6 text-slate-700">
+        {healthMeta.description}
+      </p>
+
+      <p className="mt-2 text-xs font-semibold text-slate-500">
+        {getConnectionActivityLabel(connection)}
+      </p>
+
       <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-xl bg-slate-50 p-3">
+        <div className="rounded-xl bg-white/70 p-3 ring-1 ring-slate-200">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
             Devices
           </p>
@@ -1323,7 +1438,7 @@ function DeviceConnectionCard({ connection }) {
           </p>
         </div>
 
-        <div className="rounded-xl bg-slate-50 p-3">
+        <div className="rounded-xl bg-white/70 p-3 ring-1 ring-slate-200">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
             Last Sync
           </p>
@@ -1332,7 +1447,7 @@ function DeviceConnectionCard({ connection }) {
           </p>
         </div>
 
-        <div className="rounded-xl bg-slate-50 p-3">
+        <div className="rounded-xl bg-white/70 p-3 ring-1 ring-slate-200">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
             Last Event
           </p>
@@ -1341,7 +1456,7 @@ function DeviceConnectionCard({ connection }) {
           </p>
         </div>
 
-        <div className="rounded-xl bg-slate-50 p-3">
+        <div className="rounded-xl bg-white/70 p-3 ring-1 ring-slate-200">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
             Account / Source ID
           </p>
@@ -1360,7 +1475,7 @@ function DeviceConnectionCard({ connection }) {
             {capabilities.map((capability) => (
               <span
                 key={capability}
-                className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700"
+                className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200"
               >
                 {formatDeviceInsightLabel(capability)}
               </span>
@@ -1370,16 +1485,17 @@ function DeviceConnectionCard({ connection }) {
       ) : null}
 
       {connection?.notes ? (
-        <div className="mt-4 rounded-xl bg-slate-50 p-3">
+        <div className="mt-4 rounded-xl bg-white/70 p-3 ring-1 ring-slate-200">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
             Connection Notes
           </p>
-          <p className="mt-1 text-sm text-slate-700">{connection.notes}</p>
+          <p className="mt-1 text-sm leading-6 text-slate-700">{connection.notes}</p>
         </div>
       ) : null}
     </article>
   );
 }
+
 
 function HomeownerDeviceConnectionsSection({ apiBaseUrl, recordId }) {
   const [connections, setConnections] = useState([]);
