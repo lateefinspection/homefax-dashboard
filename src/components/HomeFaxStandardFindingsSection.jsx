@@ -2522,6 +2522,12 @@ export default function HomeFaxStandardFindingsSection() {
         recordId={recordId}
       />
 
+        <HomeownerProviderConnectionsSection
+          apiBaseUrl={apiBaseUrl}
+          recordId={recordId}
+        />
+
+
       <HomeownerDeviceEventInsightsSection
         apiBaseUrl={apiBaseUrl}
         recordId={recordId}
