@@ -1497,6 +1497,352 @@ function DeviceConnectionCard({ connection }) {
 }
 
 
+
+
+// Dashboard Provider Connection UI Pass 1D - emergency component restore
+function formatProviderCategory(value) {
+  return String(value || "")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function getProviderStatusMeta(provider) {
+  const configured = provider?.oauth_ready === true || provider?.configured === true;
+
+  if (configured) {
+    return {
+      label: "Adapter Ready",
+      tone: "good",
+      description: "HomeFax can begin the real provider OAuth flow for this source.",
+    };
+  }
+
+  return {
+    label: "Coming Soon",
+    tone: "warn",
+    description:
+      "The HomeFax provider adapter is prepared, but real provider credentials are not connected yet.",
+  };
+}
+
+function ProviderCapabilityPill({ capability }) {
+  return (
+    <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
+      {String(capability || "").replace(/_/g, " ")}
+    </span>
+  );
+}
+
+function ProviderConnectionCard({ provider, apiBaseUrl, recordId, onStartResult }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const meta = getProviderStatusMeta(provider);
+  const capabilities = Array.isArray(provider?.capabilities) ? provider.capabilities : [];
+
+  async function handleStartConnection() {
+    setBusy(true);
+    setError("");
+
+    try {
+      const params = new URLSearchParams();
+
+      if (recordId) params.set("record_id", recordId);
+      params.set("tenant_id", "lateef-home-inspection");
+
+      const redirectUrl = `${window.location.origin}${window.location.pathname}?record_id=${encodeURIComponent(
+        recordId || ""
+      )}&view=homeowner`;
+
+      params.set("redirect_after_connect", redirectUrl);
+
+      const response = await fetch(
+        `${apiBaseUrl}/provider-oauth/${provider.provider}/start?${params.toString()}`
+      );
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || data?.success === false) {
+        throw new Error(
+          data?.detail?.error ||
+            data?.error ||
+            data?.message ||
+            `Provider connection start failed with HTTP ${response.status}`
+        );
+      }
+
+      onStartResult?.({
+        provider: provider.provider,
+        display_name: provider.display_name,
+        ...data,
+      });
+    } catch (err) {
+      setError(err?.message || "Unable to start provider connection.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">
+            Provider Connection
+          </p>
+          <h4 className="mt-1 text-base font-bold text-slate-950">
+            {provider?.display_name || provider?.provider}
+          </h4>
+          <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            {formatProviderCategory(provider?.category)}
+          </p>
+        </div>
+
+        <span
+          className={`inline-flex w-fit rounded-full px-3 py-1 text-xs font-bold ${
+            meta.tone === "good"
+              ? "bg-emerald-50 text-emerald-700"
+              : "bg-amber-50 text-amber-700"
+          }`}
+        >
+          {meta.label}
+        </span>
+      </div>
+
+      <p className="mt-3 text-sm leading-relaxed text-slate-600">
+        {provider?.description || meta.description}
+      </p>
+
+      <p className="mt-2 text-xs leading-relaxed text-slate-500">
+        {meta.description}
+      </p>
+
+      {capabilities.length > 0 && (
+        <div className="mt-4">
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">
+            HomeFax Capabilities
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {capabilities.map((capability) => (
+              <ProviderCapabilityPill key={capability} capability={capability} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          {error}
+        </div>
+      )}
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={handleStartConnection}
+          disabled={busy}
+          className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {busy ? "Preparing..." : provider?.oauth_ready ? "Connect" : "Preview Connect Flow"}
+        </button>
+
+        <span className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-500">
+          {provider?.status || "planned"}
+        </span>
+      </div>
+    </article>
+  );
+}
+
+function HomeownerProviderConnectionsSection({ apiBaseUrl, recordId }) {
+  const [providers, setProviders] = useState([]);
+  const [tempestHealth, setTempestHealth] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [startResult, setStartResult] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadProviders() {
+      setLoading(true);
+      setError("");
+
+      try {
+        const [providersResponse, tempestResponse] = await Promise.all([
+          fetch(`${apiBaseUrl}/provider-oauth/supported-providers`),
+          fetch(`${apiBaseUrl}/provider-adapters/tempest/health`),
+        ]);
+
+        const providersData = await providersResponse.json().catch(() => ({}));
+        const tempestData = await tempestResponse.json().catch(() => ({}));
+
+        if (!providersResponse.ok || providersData?.success === false) {
+          throw new Error(
+            providersData?.detail?.error ||
+              providersData?.error ||
+              "Unable to load supported providers."
+          );
+        }
+
+        if (!cancelled) {
+          const loadedProviders = Array.isArray(providersData?.providers)
+            ? providersData.providers
+            : [];
+
+          const mergedProviders = loadedProviders.map((provider) => {
+            if (provider.provider !== "tempest") return provider;
+
+            return {
+              ...provider,
+              configured: tempestData?.config?.configured === true,
+              oauth_ready:
+                provider.oauth_ready === true ||
+                tempestData?.config?.configured === true,
+            };
+          });
+
+          setProviders(mergedProviders);
+          setTempestHealth(tempestData?.success ? tempestData : null);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err?.message || "Unable to load provider connections.");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    if (apiBaseUrl) {
+      loadProviders();
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [apiBaseUrl]);
+
+  return (
+    <section className="mt-6 rounded-3xl border border-slate-200 bg-white/90 p-5 shadow-sm">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">
+            Connect More Monitoring Sources
+          </p>
+          <h3 className="mt-1 text-xl font-black text-slate-950">
+            Provider Connections
+          </h3>
+          <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-600">
+            HomeFax can connect homeowner-authorized provider apps and translate
+            device, weather, HVAC, humidity, and leak activity into the same
+            HomeFax monitoring timeline.
+          </p>
+        </div>
+
+        <div className="rounded-2xl bg-slate-950 px-4 py-3 text-white">
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-300">
+            Providers
+          </p>
+          <p className="text-2xl font-black">{providers.length || 0}</p>
+        </div>
+      </div>
+
+      {tempestHealth?.config && (
+        <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">
+            Tempest Adapter Health
+          </p>
+          <div className="mt-2 grid gap-3 text-sm sm:grid-cols-3">
+            <div>
+              <p className="text-slate-400">Configured</p>
+              <p className="font-bold text-slate-900">
+                {tempestHealth.config.configured ? "Yes" : "No"}
+              </p>
+            </div>
+            <div>
+              <p className="text-slate-400">Redirect URI</p>
+              <p className="break-all font-semibold text-slate-700">
+                {tempestHealth.config.redirect_uri}
+              </p>
+            </div>
+            <div>
+              <p className="text-slate-400">Mode</p>
+              <p className="font-bold text-slate-900">
+                {tempestHealth.mode || "adapter_skeleton"}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+          {error}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-500">
+          Loading provider connection options...
+        </div>
+      ) : (
+        <div className="mt-5 grid gap-4 lg:grid-cols-3">
+          {providers.map((provider) => (
+            <ProviderConnectionCard
+              key={provider.provider}
+              provider={provider}
+              apiBaseUrl={apiBaseUrl}
+              recordId={recordId}
+              onStartResult={setStartResult}
+            />
+          ))}
+        </div>
+      )}
+
+      {startResult && (
+        <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700">
+            OAuth Start Preview
+          </p>
+          <h4 className="mt-1 text-base font-black text-emerald-950">
+            {startResult.display_name || startResult.provider}
+          </h4>
+          <p className="mt-2 text-sm text-emerald-800">
+            HomeFax created a secure provider connection state. Real provider
+            authorization will activate after credentials are configured.
+          </p>
+          <div className="mt-3 grid gap-3 text-sm md:grid-cols-2">
+            <div>
+              <p className="text-emerald-700/70">Mode</p>
+              <p className="font-bold text-emerald-950">
+                {startResult.mode || "skeleton"}
+              </p>
+            </div>
+            <div>
+              <p className="text-emerald-700/70">Expires At</p>
+              <p className="font-bold text-emerald-950">
+                {startResult.expires_at || "Not provided"}
+              </p>
+            </div>
+          </div>
+          {startResult.authorization_url && (
+            <div className="mt-3 rounded-xl bg-white/70 p-3">
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700/70">
+                Authorization URL
+              </p>
+              <p className="mt-1 break-all text-xs font-semibold text-emerald-950">
+                {startResult.authorization_url}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+
 function HomeownerDeviceConnectionsSection({ apiBaseUrl, recordId }) {
   const [connections, setConnections] = useState([]);
   const [capabilityCounts, setCapabilityCounts] = useState({});
