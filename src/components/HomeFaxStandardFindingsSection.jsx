@@ -1499,7 +1499,7 @@ function DeviceConnectionCard({ connection }) {
 
 
 
-// Dashboard Provider Connection UI Pass 1D - emergency component restore
+// Dashboard Optional Provider UI Pass 1D - emergency component restore
 function formatProviderCategory(value) {
   return String(value || "")
     .replace(/_/g, " ")
@@ -1521,7 +1521,7 @@ function getProviderStatusMeta(provider) {
     label: "Coming Soon",
     tone: "warn",
     description:
-      "The HomeFax provider adapter is prepared, but real provider credentials are not connected yet.",
+      "This optional provider adapter is prepared, but real homeowner/provider credentials are not connected yet.",
   };
 }
 
@@ -1588,7 +1588,7 @@ function ProviderConnectionCard({ provider, apiBaseUrl, recordId, onStartResult 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">
-            Provider Connection
+            Optional Provider
           </p>
           <h4 className="mt-1 text-base font-bold text-slate-950">
             {provider?.display_name || provider?.provider}
@@ -1610,7 +1610,9 @@ function ProviderConnectionCard({ provider, apiBaseUrl, recordId, onStartResult 
       </div>
 
       <p className="mt-3 text-sm leading-relaxed text-slate-600">
-        {provider?.description || meta.description}
+        {provider?.provider === "tempest"
+          ? "Optional weather station upgrade. HomeFax Weather Intelligence already provides local weather for this property; a homeowner-owned weather station can add more precise property-level rain, wind, humidity, heat, freeze, and lightning signals."
+          : provider?.description || meta.description}
       </p>
 
       <p className="mt-2 text-xs leading-relaxed text-slate-500">
@@ -1728,15 +1730,13 @@ function HomeownerProviderConnectionsSection({ apiBaseUrl, recordId }) {
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">
-            Connect More Monitoring Sources
+            Connect Optional Monitoring Sources
           </p>
           <h3 className="mt-1 text-xl font-black text-slate-950">
-            Provider Connections
+            Provider Add-Ons
           </h3>
           <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-600">
-            HomeFax can connect homeowner-authorized provider apps and translate
-            device, weather, HVAC, humidity, and leak activity into the same
-            HomeFax monitoring timeline.
+            HomeFax already includes local weather intelligence for this property. Optional provider connections can add homeowner-owned devices, weather stations, HVAC data, leak sensors, and smart-home signals for more precise monitoring.
           </p>
         </div>
 
@@ -1809,8 +1809,7 @@ function HomeownerProviderConnectionsSection({ apiBaseUrl, recordId }) {
             {startResult.display_name || startResult.provider}
           </h4>
           <p className="mt-2 text-sm text-emerald-800">
-            HomeFax created a secure provider connection state. Real provider
-            authorization will activate after credentials are configured.
+            HomeFax created a secure optional-provider connection state. Real provider authorization will activate only after credentials are configured.
           </p>
           <div className="mt-3 grid gap-3 text-sm md:grid-cols-2">
             <div>
