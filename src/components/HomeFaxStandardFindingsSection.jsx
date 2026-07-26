@@ -3069,7 +3069,22 @@ export default function HomeFaxStandardFindingsSection() {
                     </div>
                     <div>
                       <span className="font-black text-slate-700">Homeowner Ack:</span>{" "}
-                      {event.homeowner_acknowledged || "no"}
+                      {[
+                        "yes",
+                        "true",
+                        "1",
+                        "acknowledged",
+                      ].includes(String(event.homeowner_acknowledged || "").trim().toLowerCase()) ||
+                      [
+                        "acknowledged",
+                        "resolved",
+                        "dismissed",
+                        "false_alarm",
+                        "escalated",
+                      ].includes(String(event.event_status || "").trim().toLowerCase()) ||
+                      Boolean(event.review_decision || event.reviewed_at)
+                        ? "yes"
+                        : "no"}
                     </div>
                     <div>
                       <span className="font-black text-slate-700">Occurred:</span>{" "}
