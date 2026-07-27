@@ -2160,6 +2160,9 @@ export default function HomeFaxStandardFindingsSection() {
   const [bulkExpandCommand, setBulkExpandCommand] = useState({ expanded: null, version: 0 });
   const [copyMessage, setCopyMessage] = useState("");
   const [copyText, setCopyText] = useState("");
+  const [repairEventsByIssueId, setRepairEventsByIssueId] = useState({});
+  const [repairEventsLoading, setRepairEventsLoading] = useState(false);
+  const [repairEventsError, setRepairEventsError] = useState("");
 
   async function loadMonitoringLifecycle({ quiet = false } = {}) {
     try {
@@ -2189,6 +2192,85 @@ export default function HomeFaxStandardFindingsSection() {
 
       if (!quiet) {
         setMonitoringError(err.message || "Could not load monitoring lifecycle.");
+      }
+    }
+  }
+
+  async function loadRepairEvents({ quiet = false } = {}) {
+    const safeRecordId = String(recordId || "").trim();
+
+    if (!safeRecordId) {
+      setRepairEventsByIssueId({});
+      return;
+    }
+
+    if (!quiet) {
+      setRepairEventsLoading(true);
+    }
+
+    setRepairEventsError("");
+
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}/repair-events/${encodeURIComponent(safeRecordId)}`
+      );
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || data?.success === false) {
+        throw new Error(
+          data?.message ||
+            data?.error ||
+            `Failed to load repair events. HTTP ${response.status}`
+        );
+      }
+
+      const repairEvents = Array.isArray(data?.repair_events)
+        ? data.repair_events
+        : [];
+
+      const grouped = {};
+
+      for (const repairEvent of repairEvents) {
+        const issueId = String(
+          repairEvent?.source_issue_id ||
+            repairEvent?.issue_id ||
+            repairEvent?.verified_issue_id ||
+            ""
+        ).trim();
+
+        if (!issueId) continue;
+
+        if (!grouped[issueId]) {
+          grouped[issueId] = repairEvent;
+          continue;
+        }
+
+        const currentUpdatedAt = new Date(
+          grouped[issueId]?.updated_at ||
+            grouped[issueId]?.created_at ||
+            0
+        ).getTime();
+
+        const nextUpdatedAt = new Date(
+          repairEvent?.updated_at ||
+            repairEvent?.created_at ||
+            0
+        ).getTime();
+
+        if (nextUpdatedAt > currentUpdatedAt) {
+          grouped[issueId] = repairEvent;
+        }
+      }
+
+      setRepairEventsByIssueId(grouped);
+    } catch (err) {
+      console.error("Failed to load repair events", err);
+      setRepairEventsByIssueId({});
+      setRepairEventsError(err?.message || "Failed to load repair events.");
+    } finally {
+      if (!quiet) {
+        setRepairEventsLoading(false);
       }
     }
   }
@@ -2256,6 +2338,7 @@ export default function HomeFaxStandardFindingsSection() {
     async function load() {
       if (!alive) return;
       await loadStandardFindings();
+      await loadRepairEvents();
     }
 
     load();
@@ -2268,6 +2351,7 @@ export default function HomeFaxStandardFindingsSection() {
   useEffect(() => {
     function handleExternalMonitoringRefresh() {
       loadMonitoringLifecycle({ quiet: true });
+      loadRepairEvents({ quiet: true });
     }
 
     window.addEventListener("homefax:refresh-standard-findings", handleExternalMonitoringRefresh);
@@ -3275,8 +3359,12 @@ export default function HomeFaxStandardFindingsSection() {
             apiBaseUrl={apiBaseUrl}
             monitoringPlan={monitoringPlanByIssueId.get(String(issue.id))}
             monitoringEventCount={monitoringEventCountByIssueId.get(String(issue.id)) || 0}
+            repairEvent={repairEventsByIssueId[String(issue.id)] || null}
             forcedExpanded={bulkExpandCommand}
-            onRefresh={() => loadStandardFindings({ quiet: true })}
+            onRefresh={() => {
+              loadStandardFindings({ quiet: true });
+              loadRepairEvents({ quiet: true });
+            }}
           />
         ))}
       </div>

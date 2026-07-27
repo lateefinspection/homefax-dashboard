@@ -491,8 +491,46 @@ function AdminImagePreviewCard({
   );
 }
 
-export default function HomeFaxStandardFindingCard({ issue, apiBaseUrl, onRefresh,
+function normalizeRepairValue(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function formatRepairLabel(value) {
+  const normalized = normalizeRepairValue(value);
+
+  if (!normalized) return "Not Set";
+
+  return normalized
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function isPostRepairWatchActive(repairEvent) {
+  const watchValue = normalizeRepairValue(
+    repairEvent?.post_repair_watch_required
+  );
+
+  return ["yes", "true", "1", "active"].includes(watchValue);
+}
+
+function isRecurrenceDetected(repairEvent) {
+  return (
+    normalizeRepairValue(repairEvent?.recurrence_status) ===
+      "recurrence_detected" ||
+    Number(repairEvent?.recurrence_event_count || 0) > 0 ||
+    Boolean(repairEvent?.latest_recurrence_event_id)
+  );
+}
+
+
+export default function HomeFaxStandardFindingCard({
+  issue,
+  apiBaseUrl,
+  onRefresh,
   forcedExpanded,
+  repairEvent,
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -1019,6 +1057,104 @@ export default function HomeFaxStandardFindingCard({ issue, apiBaseUrl, onRefres
         <SectionBlock icon={Activity} title="Monitoring Plan">
           {monitoringPlan}
         </SectionBlock>
+
+        {repairEvent ? (
+          <div
+            className={`rounded-2xl border p-4 ${
+              isRecurrenceDetected(repairEvent)
+                ? "border-red-300 bg-red-50"
+                : "border-emerald-200 bg-emerald-50"
+            }`}
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-black text-slate-900">
+                  Repair + Recurrence Watch
+                </div>
+
+                <div className="mt-1 text-xs font-semibold text-slate-600">
+                  HomeFax keeps watching this issue after repair completion.
+                </div>
+              </div>
+
+              <span
+                className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-wide ${
+                  isRecurrenceDetected(repairEvent)
+                    ? "bg-red-100 text-red-800"
+                    : "bg-emerald-100 text-emerald-800"
+                }`}
+              >
+                {isRecurrenceDetected(repairEvent)
+                  ? "Recurrence Detected"
+                  : "Watching"}
+              </span>
+            </div>
+
+            <div className="mt-4 grid gap-3 text-xs text-slate-700 md:grid-cols-2">
+              <div>
+                <span className="font-black text-slate-800">Repair Status:</span>{" "}
+                {formatRepairLabel(repairEvent.repair_status)}
+              </div>
+
+              <div>
+                <span className="font-black text-slate-800">Repair Type:</span>{" "}
+                {formatRepairLabel(repairEvent.repair_type)}
+              </div>
+
+              <div>
+                <span className="font-black text-slate-800">Post-Repair Watch:</span>{" "}
+                {isPostRepairWatchActive(repairEvent) ? "Active" : "Off"}
+              </div>
+
+              <div>
+                <span className="font-black text-slate-800">Watch Window:</span>{" "}
+                {repairEvent.recurrence_watch_days || 0} days
+              </div>
+
+              <div>
+                <span className="font-black text-slate-800">Recurrence Status:</span>{" "}
+                {formatRepairLabel(repairEvent.recurrence_status)}
+              </div>
+
+              <div>
+                <span className="font-black text-slate-800">Recurrence Events:</span>{" "}
+                {repairEvent.recurrence_event_count || 0}
+              </div>
+
+              {repairEvent.latest_recurrence_event_id ? (
+                <div>
+                  <span className="font-black text-slate-800">
+                    Latest Recurrence Event:
+                  </span>{" "}
+                  #{repairEvent.latest_recurrence_event_id}
+                </div>
+              ) : null}
+
+              {repairEvent.latest_recurrence_at ? (
+                <div>
+                  <span className="font-black text-slate-800">
+                    Latest Recurrence At:
+                  </span>{" "}
+                  {repairEvent.latest_recurrence_at}
+                </div>
+              ) : null}
+            </div>
+
+            {repairEvent.repair_summary ? (
+              <div className="mt-3 rounded-xl bg-white/70 p-3 text-xs text-slate-700">
+                <span className="font-black text-slate-800">Repair Summary:</span>{" "}
+                {repairEvent.repair_summary}
+              </div>
+            ) : null}
+
+            {isRecurrenceDetected(repairEvent) ? (
+              <div className="mt-3 rounded-xl border border-red-200 bg-white/80 p-3 text-xs font-semibold text-red-800">
+                Possible recurrence detected. This issue was repaired, but HomeFax
+                received a new related monitoring event after the repair.
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="rounded-2xl border border-slate-200 bg-white p-4">
           <div className="mb-3 flex items-center justify-between gap-3">
