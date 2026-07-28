@@ -2163,6 +2163,10 @@ export default function HomeFaxStandardFindingsSection() {
   const [repairEventsByIssueId, setRepairEventsByIssueId] = useState({});
   const [repairEventsLoading, setRepairEventsLoading] = useState(false);
   const [repairEventsError, setRepairEventsError] = useState("");
+  const [maintenancePayload, setMaintenancePayload] = useState(null);
+  const [maintenanceLoading, setMaintenanceLoading] = useState(false);
+  const [maintenanceError, setMaintenanceError] = useState("");
+  const [maintenanceActionBusyId, setMaintenanceActionBusyId] = useState(null);
 
   async function loadMonitoringLifecycle({ quiet = false } = {}) {
     try {
@@ -2275,6 +2279,93 @@ export default function HomeFaxStandardFindingsSection() {
     }
   }
 
+  async function loadMaintenanceTasks({ quiet = false } = {}) {
+    const safeRecordId = String(recordId || "").trim();
+
+    if (!safeRecordId) {
+      setMaintenancePayload(null);
+      return;
+    }
+
+    if (!quiet) {
+      setMaintenanceLoading(true);
+    }
+
+    setMaintenanceError("");
+
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}/maintenance-tasks/${encodeURIComponent(safeRecordId)}`
+      );
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || data?.success === false) {
+        throw new Error(
+          data?.message ||
+            data?.error ||
+            data?.detail?.message ||
+            `Failed to load maintenance tasks. HTTP ${response.status}`
+        );
+      }
+
+      setMaintenancePayload(data);
+    } catch (err) {
+      console.error("Failed to load maintenance tasks", err);
+      setMaintenancePayload(null);
+      setMaintenanceError(err?.message || "Failed to load maintenance tasks.");
+    } finally {
+      if (!quiet) {
+        setMaintenanceLoading(false);
+      }
+    }
+  }
+
+  async function completeMaintenanceTask(taskId) {
+    const safeTaskId = String(taskId || "").trim();
+
+    if (!safeTaskId) return;
+
+    setMaintenanceActionBusyId(safeTaskId);
+    setMaintenanceError("");
+
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}/maintenance-task/${encodeURIComponent(safeTaskId)}/complete`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            completed_by: "dashboard-homeowner",
+            note: "Completed from HomeFax dashboard.",
+            evidence_url: "",
+            event_status: "done",
+          }),
+        }
+      );
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || data?.success === false) {
+        throw new Error(
+          data?.message ||
+            data?.error ||
+            data?.detail?.message ||
+            `Failed to complete maintenance task. HTTP ${response.status}`
+        );
+      }
+
+      await loadMaintenanceTasks({ quiet: true });
+    } catch (err) {
+      console.error("Failed to complete maintenance task", err);
+      setMaintenanceError(err?.message || "Failed to complete maintenance task.");
+    } finally {
+      setMaintenanceActionBusyId(null);
+    }
+  }
+
   async function loadStandardFindings({ quiet = false } = {}) {
     if (!quiet) {
       setLoading(true);
@@ -2339,6 +2430,7 @@ export default function HomeFaxStandardFindingsSection() {
       if (!alive) return;
       await loadStandardFindings();
       await loadRepairEvents();
+      await loadMaintenanceTasks();
     }
 
     load();
@@ -2352,6 +2444,7 @@ export default function HomeFaxStandardFindingsSection() {
     function handleExternalMonitoringRefresh() {
       loadMonitoringLifecycle({ quiet: true });
       loadRepairEvents({ quiet: true });
+      loadMaintenanceTasks({ quiet: true });
     }
 
     window.addEventListener("homefax:refresh-standard-findings", handleExternalMonitoringRefresh);
@@ -2739,6 +2832,10 @@ export default function HomeFaxStandardFindingsSection() {
   ];
 
   const monitoringPlans = monitoringPlansPayload?.monitoring_plans || [];
+  const maintenanceTasks = maintenancePayload?.maintenance_tasks || [];
+  const maintenanceSummary = maintenancePayload?.summary || {};
+  const maintenanceTaskCount = maintenancePayload?.maintenance_task_count || maintenanceTasks.length || 0;
+
   const monitoringEvents = monitoringEventsPayload?.events || [];
 
   const latestMonitoringEvents = useMemo(() => {
@@ -3256,6 +3353,163 @@ export default function HomeFaxStandardFindingsSection() {
           </div>
         </div>
       ) : null}
+
+      <div className="rounded-3xl border border-emerald-200 bg-emerald-50/60 p-5 shadow-sm">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="text-xs font-black uppercase tracking-[0.2em] text-emerald-700">
+              Maintenance Timeline
+            </div>
+            <div className="mt-1 text-lg font-black text-slate-950">
+              Recurring Home-Care Tasks
+            </div>
+            <div className="mt-1 text-sm leading-6 text-slate-600">
+              HomeFax tracks recurring maintenance, shopping needs, completion history, and next due dates.
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => loadMaintenanceTasks({ quiet: false })}
+            className="rounded-full border border-emerald-200 bg-white px-4 py-2 text-xs font-black text-emerald-800 shadow-sm hover:bg-emerald-50"
+          >
+            Refresh Maintenance
+          </button>
+        </div>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="rounded-2xl bg-white p-4 shadow-sm">
+            <div className="text-[11px] font-black uppercase tracking-wide text-slate-500">Tasks</div>
+            <div className="mt-1 text-2xl font-black text-slate-950">{maintenanceTaskCount}</div>
+          </div>
+
+          <div className="rounded-2xl bg-white p-4 shadow-sm">
+            <div className="text-[11px] font-black uppercase tracking-wide text-red-600">Overdue</div>
+            <div className="mt-1 text-2xl font-black text-red-700">{maintenanceSummary.overdue || 0}</div>
+          </div>
+
+          <div className="rounded-2xl bg-white p-4 shadow-sm">
+            <div className="text-[11px] font-black uppercase tracking-wide text-amber-600">Due</div>
+            <div className="mt-1 text-2xl font-black text-amber-700">{maintenanceSummary.due || 0}</div>
+          </div>
+
+          <div className="rounded-2xl bg-white p-4 shadow-sm">
+            <div className="text-[11px] font-black uppercase tracking-wide text-blue-600">Upcoming</div>
+            <div className="mt-1 text-2xl font-black text-blue-700">{maintenanceSummary.upcoming || 0}</div>
+          </div>
+
+          <div className="rounded-2xl bg-white p-4 shadow-sm">
+            <div className="text-[11px] font-black uppercase tracking-wide text-emerald-600">Scheduled</div>
+            <div className="mt-1 text-2xl font-black text-emerald-700">{maintenanceSummary.scheduled || 0}</div>
+          </div>
+        </div>
+
+        {maintenanceLoading ? (
+          <div className="mt-4 rounded-2xl border border-emerald-200 bg-white p-4 text-sm font-semibold text-slate-600">
+            Loading maintenance tasks...
+          </div>
+        ) : null}
+
+        {maintenanceError ? (
+          <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">
+            {maintenanceError}
+          </div>
+        ) : null}
+
+        {maintenanceTasks.length ? (
+          <div className="mt-5 grid gap-4 lg:grid-cols-2">
+            {maintenanceTasks.map((task) => {
+              const shoppingList = Array.isArray(task.shopping_list_json)
+                ? task.shopping_list_json
+                : [];
+
+              const taskId = String(task.id || "");
+              const busy = maintenanceActionBusyId === taskId;
+
+              return (
+                <div
+                  key={task.id || task.title}
+                  className="rounded-3xl border border-emerald-100 bg-white p-5 shadow-sm"
+                >
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <div className="text-base font-black text-slate-950">
+                        {task.title || "Maintenance task"}
+                      </div>
+                      <div className="mt-1 text-sm font-bold text-slate-600">
+                        {[task.system, task.component].filter(Boolean).join(" · ") || "General home care"}
+                      </div>
+                    </div>
+
+                    <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-emerald-800">
+                      {task.due_status || "scheduled"}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 text-xs font-semibold text-slate-600 sm:grid-cols-2">
+                    <div>
+                      <span className="font-black text-slate-800">Every:</span>{" "}
+                      {task.recurrence_interval_count || 1} {task.recurrence_interval_unit || "months"}
+                    </div>
+
+                    <div>
+                      <span className="font-black text-slate-800">Store Category:</span>{" "}
+                      {task.store_category || "hardware_store"}
+                    </div>
+
+                    <div>
+                      <span className="font-black text-slate-800">Next Due:</span>{" "}
+                      {task.next_due_at || "not scheduled"}
+                    </div>
+
+                    <div>
+                      <span className="font-black text-slate-800">Last Completed:</span>{" "}
+                      {task.last_completed_at || "not completed yet"}
+                    </div>
+                  </div>
+
+                  {shoppingList.length ? (
+                    <div className="mt-4 rounded-2xl bg-emerald-50 p-4">
+                      <div className="text-xs font-black uppercase tracking-wide text-emerald-800">
+                        Shopping List
+                      </div>
+                      <ul className="mt-2 list-disc space-y-1 pl-5 text-sm font-semibold text-slate-700">
+                        {shoppingList.map((item, index) => (
+                          <li key={`${task.id}-shopping-${index}`}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+
+                  {task.instructions ? (
+                    <div className="mt-4 rounded-2xl bg-slate-50 p-4 text-sm leading-6 text-slate-700">
+                      <span className="font-black text-slate-900">Instructions:</span>{" "}
+                      {task.instructions}
+                    </div>
+                  ) : null}
+
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => completeMaintenanceTask(task.id)}
+                    className={
+                      busy
+                        ? "mt-4 w-full rounded-2xl bg-slate-300 px-4 py-3 text-sm font-black text-white"
+                        : "mt-4 w-full rounded-2xl bg-emerald-700 px-4 py-3 text-sm font-black text-white shadow-sm hover:bg-emerald-800"
+                    }
+                  >
+                    {busy ? "Saving Completion..." : "Mark Complete"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="mt-5 rounded-2xl border border-dashed border-emerald-200 bg-white/80 p-5 text-sm font-semibold text-slate-600">
+            No maintenance tasks yet. Once HomeFax creates recurring tasks, they will appear here.
+          </div>
+        )}
+      </div>
 
       <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
