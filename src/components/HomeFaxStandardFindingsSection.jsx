@@ -2218,6 +2218,10 @@ export default function HomeFaxStandardFindingsSection() {
   const [storeReminderLoading, setStoreReminderLoading] = useState(false);
   const [storeReminderError, setStoreReminderError] = useState("");
   const [storeReminderActionBusyId, setStoreReminderActionBusyId] = useState(null);
+  const [locationPermissionPayload, setLocationPermissionPayload] = useState(null);
+  const [locationPermissionLoading, setLocationPermissionLoading] = useState(false);
+  const [locationPermissionError, setLocationPermissionError] = useState("");
+  const [locationPermissionBusyAction, setLocationPermissionBusyAction] = useState("");
 
   async function loadMonitoringLifecycle({ quiet = false } = {}) {
     try {
@@ -2417,6 +2421,250 @@ export default function HomeFaxStandardFindingsSection() {
     }
   }
 
+  async function loadLocationPermission({ quiet = false } = {}) {
+    const safeRecordId = String(recordId || "").trim();
+
+    if (!safeRecordId) {
+      setLocationPermissionPayload(null);
+      return;
+    }
+
+    if (!quiet) {
+      setLocationPermissionLoading(true);
+    }
+
+    setLocationPermissionError("");
+
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}/location-permissions/${encodeURIComponent(safeRecordId)}?user_id=homeowner-smoke-test`
+      );
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || data?.success === false) {
+        throw new Error(
+          data?.message ||
+            data?.error ||
+            data?.detail?.message ||
+            `Failed to load location permission. HTTP ${response.status}`
+        );
+      }
+
+      setLocationPermissionPayload(data);
+    } catch (err) {
+      console.error("Failed to load location permission", err);
+      setLocationPermissionPayload(null);
+      setLocationPermissionError(err?.message || "Failed to load location permission.");
+    } finally {
+      if (!quiet) {
+        setLocationPermissionLoading(false);
+      }
+    }
+  }
+
+  async function saveLocationPermissionPreference({
+    permissionStatus,
+    browserPermissionStatus = "",
+    enabled = "no",
+    paused = "no",
+    consentText = "",
+  }) {
+    const safeRecordId = String(recordId || "").trim();
+
+    if (!safeRecordId) return;
+
+    const response = await fetch(`${apiBaseUrl}/location-permissions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        tenant_id: "lateef-home-inspection",
+        property_id: "",
+        record_id: safeRecordId,
+        user_id: "homeowner-smoke-test",
+        permission_feature: "store_reminders",
+        permission_status: permissionStatus,
+        browser_permission_status: browserPermissionStatus,
+        location_mode: "nearby_store_only",
+        consent_version: "location-store-reminders-v1",
+        consent_text:
+          consentText ||
+          "Location reminders are optional. HomeFax can remind me when I am near a useful store for an active home-care task. HomeFax does not need my full movement history.",
+        enabled,
+        paused,
+      }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok || data?.success === false) {
+      throw new Error(
+        data?.message ||
+          data?.error ||
+          data?.detail?.message ||
+          `Failed to save location permission. HTTP ${response.status}`
+      );
+    }
+
+    setLocationPermissionPayload({
+      success: true,
+      record_id: safeRecordId,
+      user_id: "homeowner-smoke-test",
+      permission: data.permission,
+    });
+
+    return data;
+  }
+
+  async function enableLocationStoreReminders() {
+    setLocationPermissionBusyAction("enable");
+    setLocationPermissionError("");
+
+    try {
+      let browserPermissionStatus = "unsupported";
+      let permissionStatus = "unsupported";
+      let enabled = "no";
+
+      if (typeof navigator === "undefined" || !navigator.geolocation) {
+        browserPermissionStatus = "unsupported";
+        permissionStatus = "unsupported";
+        enabled = "no";
+      } else {
+        const browserResult = await new Promise((resolve) => {
+          navigator.geolocation.getCurrentPosition(
+            () => resolve({ status: "granted" }),
+            () => resolve({ status: "denied" }),
+            {
+              enableHighAccuracy: false,
+              timeout: 10000,
+              maximumAge: 60000,
+            }
+          );
+        });
+
+        browserPermissionStatus = browserResult.status;
+
+        if (browserResult.status === "granted") {
+          permissionStatus = "enabled";
+          enabled = "yes";
+        } else {
+          permissionStatus = "denied";
+          enabled = "no";
+        }
+      }
+
+      await saveLocationPermissionPreference({
+        permissionStatus,
+        browserPermissionStatus,
+        enabled,
+        paused: "no",
+      });
+    } catch (err) {
+      console.error("Failed to enable location store reminders", err);
+      setLocationPermissionError(err?.message || "Failed to enable store reminders.");
+    } finally {
+      setLocationPermissionBusyAction("");
+    }
+  }
+
+  async function pauseLocationStoreReminders(paused) {
+    const safeRecordId = String(recordId || "").trim();
+
+    if (!safeRecordId) return;
+
+    setLocationPermissionBusyAction(paused ? "pause" : "resume");
+    setLocationPermissionError("");
+
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}/location-permissions/${encodeURIComponent(safeRecordId)}/pause`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            user_id: "homeowner-smoke-test",
+            paused: paused ? "yes" : "no",
+          }),
+        }
+      );
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || data?.success === false) {
+        throw new Error(
+          data?.message ||
+            data?.error ||
+            data?.detail?.message ||
+            `Failed to update pause state. HTTP ${response.status}`
+        );
+      }
+
+      setLocationPermissionPayload({
+        success: true,
+        record_id: safeRecordId,
+        user_id: "homeowner-smoke-test",
+        permission: data.permission,
+      });
+    } catch (err) {
+      console.error("Failed to pause/resume location store reminders", err);
+      setLocationPermissionError(err?.message || "Failed to update store reminder pause state.");
+    } finally {
+      setLocationPermissionBusyAction("");
+    }
+  }
+
+  async function disableLocationStoreReminders() {
+    const safeRecordId = String(recordId || "").trim();
+
+    if (!safeRecordId) return;
+
+    setLocationPermissionBusyAction("disable");
+    setLocationPermissionError("");
+
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}/location-permissions/${encodeURIComponent(safeRecordId)}/disable`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            user_id: "homeowner-smoke-test",
+            reason: "homeowner_disabled_from_dashboard",
+          }),
+        }
+      );
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || data?.success === false) {
+        throw new Error(
+          data?.message ||
+            data?.error ||
+            data?.detail?.message ||
+            `Failed to disable location reminders. HTTP ${response.status}`
+        );
+      }
+
+      setLocationPermissionPayload({
+        success: true,
+        record_id: safeRecordId,
+        user_id: "homeowner-smoke-test",
+        permission: data.permission,
+      });
+    } catch (err) {
+      console.error("Failed to disable location store reminders", err);
+      setLocationPermissionError(err?.message || "Failed to disable store reminders.");
+    } finally {
+      setLocationPermissionBusyAction("");
+    }
+  }
+
   async function loadStoreReminders({ quiet = false } = {}) {
     const safeRecordId = String(recordId || "").trim();
 
@@ -2568,6 +2816,7 @@ export default function HomeFaxStandardFindingsSection() {
       await loadRepairEvents();
       await loadMaintenanceTasks();
       await loadStoreReminders();
+      await loadLocationPermission();
     }
 
     load();
@@ -2583,6 +2832,7 @@ export default function HomeFaxStandardFindingsSection() {
       loadRepairEvents({ quiet: true });
       loadMaintenanceTasks({ quiet: true });
       loadStoreReminders({ quiet: true });
+      loadLocationPermission({ quiet: true });
     }
 
     window.addEventListener("homefax:refresh-standard-findings", handleExternalMonitoringRefresh);
@@ -2980,6 +3230,18 @@ export default function HomeFaxStandardFindingsSection() {
     storeReminderPayload?.location_alert_event_count ||
     storeReminderEvents.length ||
     0;
+
+  const locationPermission = locationPermissionPayload?.permission || {};
+  const locationPermissionStatus =
+    String(locationPermission.permission_status || "not_configured").trim().toLowerCase();
+  const locationBrowserPermissionStatus =
+    String(locationPermission.browser_permission_status || "").trim().toLowerCase();
+  const locationPermissionEnabled =
+    String(locationPermission.enabled || "no").trim().toLowerCase() === "yes";
+  const locationPermissionPaused =
+    String(locationPermission.paused || "no").trim().toLowerCase() === "yes";
+  const locationPermissionIsActive =
+    locationPermissionEnabled && !locationPermissionPaused && locationPermissionStatus === "enabled";
 
   const monitoringEvents = monitoringEventsPayload?.events || [];
 
@@ -3717,6 +3979,140 @@ export default function HomeFaxStandardFindingsSection() {
             {storeReminderError}
           </div>
         ) : null}
+
+        <div className="mt-5 rounded-3xl border border-indigo-100 bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div className="text-xs font-black uppercase tracking-[0.2em] text-indigo-700">
+                Smart Store Reminders
+              </div>
+
+              <div className="mt-1 text-lg font-black text-slate-950">
+                Optional Location-Based Reminders
+              </div>
+
+              <div className="mt-2 text-sm leading-6 text-slate-600">
+                HomeFax can remind you when you are near a useful store for an active home-care task.
+                Location reminders are optional and can be turned off anytime.
+              </div>
+            </div>
+
+            <span
+              className={
+                locationPermissionIsActive
+                  ? "rounded-full bg-emerald-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-emerald-800"
+                  : locationPermissionPaused
+                    ? "rounded-full bg-amber-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-amber-800"
+                    : locationPermissionStatus === "disabled" || locationPermissionStatus === "denied"
+                      ? "rounded-full bg-slate-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-slate-700"
+                      : "rounded-full bg-indigo-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-indigo-800"
+              }
+            >
+              {locationPermissionIsActive
+                ? "Enabled"
+                : locationPermissionPaused
+                  ? "Paused"
+                  : locationPermissionStatus === "disabled"
+                    ? "Disabled"
+                    : locationPermissionStatus === "denied"
+                      ? "Denied"
+                      : locationPermissionStatus === "unsupported"
+                        ? "Unsupported"
+                        : "Not Configured"}
+            </span>
+          </div>
+
+          <div className="mt-4 grid gap-3 text-xs font-semibold text-slate-600 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-2xl bg-indigo-50 p-4">
+              <div className="font-black uppercase tracking-wide text-indigo-800">Permission Status</div>
+              <div className="mt-1 text-sm text-slate-800">{locationPermissionStatus || "not_configured"}</div>
+            </div>
+
+            <div className="rounded-2xl bg-indigo-50 p-4">
+              <div className="font-black uppercase tracking-wide text-indigo-800">Browser Permission</div>
+              <div className="mt-1 text-sm text-slate-800">{locationBrowserPermissionStatus || "not requested"}</div>
+            </div>
+
+            <div className="rounded-2xl bg-indigo-50 p-4">
+              <div className="font-black uppercase tracking-wide text-indigo-800">Location Mode</div>
+              <div className="mt-1 text-sm text-slate-800">{locationPermission.location_mode || "nearby_store_only"}</div>
+            </div>
+
+            <div className="rounded-2xl bg-indigo-50 p-4">
+              <div className="font-black uppercase tracking-wide text-indigo-800">Paused</div>
+              <div className="mt-1 text-sm text-slate-800">{locationPermissionPaused ? "yes" : "no"}</div>
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-2xl bg-slate-50 p-4 text-sm leading-6 text-slate-700">
+            <div className="font-black text-slate-900">Privacy promise</div>
+            <div className="mt-1">
+              HomeFax stores your permission state for store reminders. It does not store continuous
+              GPS history or create a movement timeline. Nearby-store reminders are tied to active
+              home-care tasks and shopping lists.
+            </div>
+          </div>
+
+          {locationPermissionLoading ? (
+            <div className="mt-4 rounded-2xl border border-indigo-200 bg-indigo-50 p-4 text-sm font-semibold text-indigo-800">
+              Loading location permission...
+            </div>
+          ) : null}
+
+          {locationPermissionError ? (
+            <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">
+              {locationPermissionError}
+            </div>
+          ) : null}
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={Boolean(locationPermissionBusyAction)}
+              onClick={enableLocationStoreReminders}
+              className={
+                locationPermissionBusyAction
+                  ? "rounded-2xl bg-slate-300 px-4 py-3 text-sm font-black text-white"
+                  : "rounded-2xl bg-indigo-700 px-4 py-3 text-sm font-black text-white shadow-sm hover:bg-indigo-800"
+              }
+            >
+              {locationPermissionBusyAction === "enable" ? "Enabling..." : "Enable Store Reminders"}
+            </button>
+
+            {locationPermissionEnabled && !locationPermissionPaused ? (
+              <button
+                type="button"
+                disabled={Boolean(locationPermissionBusyAction)}
+                onClick={() => pauseLocationStoreReminders(true)}
+                className="rounded-2xl border border-amber-200 bg-white px-4 py-3 text-sm font-black text-amber-800 shadow-sm hover:bg-amber-50"
+              >
+                {locationPermissionBusyAction === "pause" ? "Pausing..." : "Pause"}
+              </button>
+            ) : null}
+
+            {locationPermissionPaused ? (
+              <button
+                type="button"
+                disabled={Boolean(locationPermissionBusyAction)}
+                onClick={() => pauseLocationStoreReminders(false)}
+                className="rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-sm font-black text-emerald-800 shadow-sm hover:bg-emerald-50"
+              >
+                {locationPermissionBusyAction === "resume" ? "Resuming..." : "Resume"}
+              </button>
+            ) : null}
+
+            {locationPermissionEnabled || locationPermissionStatus === "paused" ? (
+              <button
+                type="button"
+                disabled={Boolean(locationPermissionBusyAction)}
+                onClick={disableLocationStoreReminders}
+                className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 shadow-sm hover:bg-slate-50"
+              >
+                {locationPermissionBusyAction === "disable" ? "Turning Off..." : "Turn Off"}
+              </button>
+            ) : null}
+          </div>
+        </div>
 
         {storeReminderEvents.length ? (
           <div className="mt-5 grid gap-4 lg:grid-cols-2">
