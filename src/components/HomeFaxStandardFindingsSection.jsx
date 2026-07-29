@@ -2142,6 +2142,64 @@ function HomeownerDeviceEventInsightsSection({ apiBaseUrl, recordId }) {
 }
 
 
+function isShoppingOnlyStoreReminder(event) {
+  const taskId = String(event?.maintenance_task_id ?? "").trim();
+  const taskTitle = String(event?.maintenance_task_title || event?.task_title || "").trim();
+  const alertMessage = String(event?.alert_message || "").toLowerCase();
+
+  if (taskId === "0") return true;
+  if (!taskId && alertMessage.includes("home-care items needed soon")) return true;
+  if (!taskId && taskTitle.toLowerCase().includes("home-care shopping")) return true;
+
+  return false;
+}
+
+function getStoreReminderSubtitle(event) {
+  if (isShoppingOnlyStoreReminder(event)) {
+    return "Home-care shopping reminder";
+  }
+
+  return (
+    event?.maintenance_task_title ||
+    event?.task_title ||
+    event?.title ||
+    "Maintenance reminder"
+  );
+}
+
+function getStoreReminderDateLabel(event) {
+  return isShoppingOnlyStoreReminder(event) ? "Needed By" : "Next Due";
+}
+
+function getStoreReminderDateValue(event) {
+  if (!isShoppingOnlyStoreReminder(event)) {
+    return (
+      event?.maintenance_task_next_due_at ||
+      event?.next_due_at ||
+      "not available"
+    );
+  }
+
+  const alertMessage = String(event?.alert_message || "");
+  const match = alertMessage.match(/needed by\s+(\d{4}-\d{2}-\d{2})/i);
+
+  if (match?.[1]) {
+    return match[1];
+  }
+
+  return event?.needed_by || "see shopping list";
+}
+
+function getStoreReminderCompleteActionLabel(event) {
+  return isShoppingOnlyStoreReminder(event) ? "Mark Items Purchased" : "Mark Task Complete";
+}
+
+function getStoreReminderCompleteActionDescription(event) {
+  return isShoppingOnlyStoreReminder(event)
+    ? "I bought the listed shopping items."
+    : "I completed the maintenance task.";
+}
+
 function formatStoreReminderAction(value) {
   const normalized = String(value || "").trim().toLowerCase();
 
@@ -2234,6 +2292,16 @@ export default function HomeFaxStandardFindingsSection() {
     reminder_window_days: 14,
     urgency: "normal",
     maintenance_task_id: "",
+    notes: "",
+  });
+  const [shoppingItemEditId, setShoppingItemEditId] = useState(null);
+  const [shoppingItemEditForm, setShoppingItemEditForm] = useState({
+    item_name: "",
+    quantity: "",
+    store_category: "grocery_store",
+    needed_by: "",
+    reminder_window_days: 14,
+    urgency: "normal",
     notes: "",
   });
 
@@ -2435,6 +2503,41 @@ export default function HomeFaxStandardFindingsSection() {
     }
   }
 
+  function toDatetimeLocalValue(value) {
+    const raw = String(value || "").trim();
+
+    if (!raw) return "";
+
+    return raw.slice(0, 16);
+  }
+
+  function startShoppingItemEdit(item) {
+    setShoppingItemsError("");
+    setShoppingItemEditId(item?.id || null);
+    setShoppingItemEditForm({
+      item_name: item?.item_name || "",
+      quantity: item?.quantity || "",
+      store_category: item?.store_category || "hardware_store",
+      needed_by: toDatetimeLocalValue(item?.needed_by),
+      reminder_window_days: item?.reminder_window_days || 14,
+      urgency: item?.urgency || "normal",
+      notes: item?.notes || "",
+    });
+  }
+
+  function cancelShoppingItemEdit() {
+    setShoppingItemEditId(null);
+    setShoppingItemEditForm({
+      item_name: "",
+      quantity: "",
+      store_category: "grocery_store",
+      needed_by: "",
+      reminder_window_days: 14,
+      urgency: "normal",
+      notes: "",
+    });
+  }
+
   async function loadHomeCareShoppingItems({ quiet = false } = {}) {
     const safeRecordId = String(recordId || "").trim();
 
@@ -2545,6 +2648,63 @@ export default function HomeFaxStandardFindingsSection() {
     } catch (err) {
       console.error("Failed to create shopping item", err);
       setShoppingItemsError(err?.message || "Failed to create shopping item.");
+    } finally {
+      setShoppingItemActionBusyId(null);
+    }
+  }
+
+  async function updateHomeCareShoppingItem(event) {
+    event.preventDefault();
+
+    const safeItemId = String(shoppingItemEditId || "").trim();
+    const itemName = String(shoppingItemEditForm.item_name || "").trim();
+
+    if (!safeItemId) return;
+
+    if (!itemName) {
+      setShoppingItemsError("Item name is required.");
+      return;
+    }
+
+    setShoppingItemActionBusyId(safeItemId);
+    setShoppingItemsError("");
+
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}/home-care-shopping-item/${encodeURIComponent(safeItemId)}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            item_name: itemName,
+            quantity: String(shoppingItemEditForm.quantity || "").trim(),
+            store_category: String(shoppingItemEditForm.store_category || "hardware_store").trim(),
+            needed_by: String(shoppingItemEditForm.needed_by || "").trim(),
+            reminder_window_days: Number(shoppingItemEditForm.reminder_window_days || 14),
+            urgency: String(shoppingItemEditForm.urgency || "normal").trim(),
+            notes: String(shoppingItemEditForm.notes || "").trim(),
+          }),
+        }
+      );
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || data?.success === false) {
+        throw new Error(
+          data?.message ||
+            data?.error ||
+            data?.detail?.message ||
+            `Failed to update shopping item. HTTP ${response.status}`
+        );
+      }
+
+      cancelShoppingItemEdit();
+      await loadHomeCareShoppingItems({ quiet: true });
+    } catch (err) {
+      console.error("Failed to update shopping item", err);
+      setShoppingItemsError(err?.message || "Failed to update shopping item.");
     } finally {
       setShoppingItemActionBusyId(null);
     }
@@ -4632,31 +4792,189 @@ export default function HomeFaxStandardFindingsSection() {
                       </div>
                     ) : null}
 
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {!purchased ? (
+                    {shoppingItemEditId === item.id ? (
+                      <form
+                        onSubmit={updateHomeCareShoppingItem}
+                        className="mt-4 rounded-3xl border border-purple-100 bg-purple-50/70 p-4"
+                      >
+                        <div className="text-xs font-black uppercase tracking-wide text-purple-800">
+                          Edit Shopping Item
+                        </div>
+
+                        <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                          <label className="text-xs font-black uppercase tracking-wide text-slate-700">
+                            Item Name
+                            <input
+                              value={shoppingItemEditForm.item_name}
+                              onChange={(event) =>
+                                setShoppingItemEditForm((current) => ({
+                                  ...current,
+                                  item_name: event.target.value,
+                                }))
+                              }
+                              className="mt-1 w-full rounded-2xl border border-purple-100 bg-white px-4 py-3 text-sm font-semibold normal-case tracking-normal text-slate-900 outline-none focus:border-purple-300"
+                            />
+                          </label>
+
+                          <label className="text-xs font-black uppercase tracking-wide text-slate-700">
+                            Quantity
+                            <input
+                              value={shoppingItemEditForm.quantity}
+                              onChange={(event) =>
+                                setShoppingItemEditForm((current) => ({
+                                  ...current,
+                                  quantity: event.target.value,
+                                }))
+                              }
+                              className="mt-1 w-full rounded-2xl border border-purple-100 bg-white px-4 py-3 text-sm font-semibold normal-case tracking-normal text-slate-900 outline-none focus:border-purple-300"
+                            />
+                          </label>
+
+                          <label className="text-xs font-black uppercase tracking-wide text-slate-700">
+                            Store Category
+                            <select
+                              value={shoppingItemEditForm.store_category}
+                              onChange={(event) =>
+                                setShoppingItemEditForm((current) => ({
+                                  ...current,
+                                  store_category: event.target.value,
+                                }))
+                              }
+                              className="mt-1 w-full rounded-2xl border border-purple-100 bg-white px-4 py-3 text-sm font-semibold normal-case tracking-normal text-slate-900 outline-none focus:border-purple-300"
+                            >
+                              <option value="grocery_store">Grocery Store</option>
+                              <option value="hardware_store">Hardware Store</option>
+                              <option value="big_box_store">Big Box Store</option>
+                              <option value="pharmacy">Pharmacy</option>
+                              <option value="home_goods_store">Home Goods Store</option>
+                            </select>
+                          </label>
+
+                          <label className="text-xs font-black uppercase tracking-wide text-slate-700">
+                            Needed By
+                            <input
+                              type="datetime-local"
+                              value={shoppingItemEditForm.needed_by}
+                              onChange={(event) =>
+                                setShoppingItemEditForm((current) => ({
+                                  ...current,
+                                  needed_by: event.target.value,
+                                }))
+                              }
+                              className="mt-1 w-full rounded-2xl border border-purple-100 bg-white px-4 py-3 text-sm font-semibold normal-case tracking-normal text-slate-900 outline-none focus:border-purple-300"
+                            />
+                          </label>
+
+                          <label className="text-xs font-black uppercase tracking-wide text-slate-700">
+                            Urgency
+                            <select
+                              value={shoppingItemEditForm.urgency}
+                              onChange={(event) =>
+                                setShoppingItemEditForm((current) => ({
+                                  ...current,
+                                  urgency: event.target.value,
+                                }))
+                              }
+                              className="mt-1 w-full rounded-2xl border border-purple-100 bg-white px-4 py-3 text-sm font-semibold normal-case tracking-normal text-slate-900 outline-none focus:border-purple-300"
+                            >
+                              <option value="low">Low</option>
+                              <option value="normal">Normal</option>
+                              <option value="soon">Soon</option>
+                              <option value="urgent">Urgent</option>
+                            </select>
+                          </label>
+
+                          <label className="text-xs font-black uppercase tracking-wide text-slate-700">
+                            Reminder Window Days
+                            <input
+                              type="number"
+                              min="0"
+                              value={shoppingItemEditForm.reminder_window_days}
+                              onChange={(event) =>
+                                setShoppingItemEditForm((current) => ({
+                                  ...current,
+                                  reminder_window_days: event.target.value,
+                                }))
+                              }
+                              className="mt-1 w-full rounded-2xl border border-purple-100 bg-white px-4 py-3 text-sm font-semibold normal-case tracking-normal text-slate-900 outline-none focus:border-purple-300"
+                            />
+                          </label>
+                        </div>
+
+                        <label className="mt-3 block text-xs font-black uppercase tracking-wide text-slate-700">
+                          Notes
+                          <textarea
+                            value={shoppingItemEditForm.notes}
+                            onChange={(event) =>
+                              setShoppingItemEditForm((current) => ({
+                                ...current,
+                                notes: event.target.value,
+                              }))
+                            }
+                            rows={3}
+                            className="mt-1 w-full rounded-2xl border border-purple-100 bg-white px-4 py-3 text-sm font-semibold normal-case tracking-normal text-slate-900 outline-none focus:border-purple-300"
+                          />
+                        </label>
+
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <button
+                            type="submit"
+                            disabled={busy}
+                            className={
+                              busy
+                                ? "rounded-2xl bg-slate-300 px-4 py-3 text-sm font-black text-white"
+                                : "rounded-2xl bg-purple-700 px-4 py-3 text-sm font-black text-white shadow-sm hover:bg-purple-800"
+                            }
+                          >
+                            {busy ? "Saving Correction..." : "Save Correction"}
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={cancelShoppingItemEdit}
+                            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 shadow-sm hover:bg-slate-50"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <div className="mt-4 flex flex-wrap gap-2">
                         <button
                           type="button"
                           disabled={busy}
-                          onClick={() => markShoppingItemPurchased(item.id)}
-                          className={
-                            busy
-                              ? "rounded-2xl bg-slate-300 px-4 py-3 text-sm font-black text-white"
-                              : "rounded-2xl bg-emerald-700 px-4 py-3 text-sm font-black text-white shadow-sm hover:bg-emerald-800"
-                          }
+                          onClick={() => startShoppingItemEdit(item)}
+                          className="rounded-2xl border border-purple-200 bg-white px-4 py-3 text-sm font-black text-purple-800 shadow-sm hover:bg-purple-50"
                         >
-                          {busy ? "Saving..." : "Mark Purchased"}
+                          Edit Item
                         </button>
-                      ) : null}
 
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => archiveShoppingItem(item.id)}
-                        className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 shadow-sm hover:bg-slate-50"
-                      >
-                        {busy ? "Saving..." : "Archive"}
-                      </button>
-                    </div>
+                        {!purchased ? (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => markShoppingItemPurchased(item.id)}
+                            className={
+                              busy
+                                ? "rounded-2xl bg-slate-300 px-4 py-3 text-sm font-black text-white"
+                                : "rounded-2xl bg-emerald-700 px-4 py-3 text-sm font-black text-white shadow-sm hover:bg-emerald-800"
+                            }
+                          >
+                            {busy ? "Saving..." : "Mark Purchased"}
+                          </button>
+                        ) : null}
+
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => archiveShoppingItem(item.id)}
+                          className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 shadow-sm hover:bg-slate-50"
+                        >
+                          {busy ? "Saving..." : "Archive"}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -4689,7 +5007,7 @@ export default function HomeFaxStandardFindingsSection() {
                         {event.store_name || "Nearby store"}
                       </div>
                       <div className="mt-1 text-sm font-bold text-slate-600">
-                        {event.maintenance_task_title || "Maintenance reminder"}
+                        {getStoreReminderSubtitle(event)}
                       </div>
                     </div>
 
@@ -4722,8 +5040,10 @@ export default function HomeFaxStandardFindingsSection() {
                     </div>
 
                     <div>
-                      <span className="font-black text-slate-800">Next Due:</span>{" "}
-                      {event.maintenance_task_next_due_at || "not available"}
+                      <span className="font-black text-slate-800">
+                        {getStoreReminderDateLabel(event)}:
+                      </span>{" "}
+                      {getStoreReminderDateValue(event)}
                     </div>
 
                     <div>
@@ -4771,10 +5091,14 @@ export default function HomeFaxStandardFindingsSection() {
 
                     <div className="mt-4 grid gap-2 sm:grid-cols-2">
                       {[
-                        ["bought_items", "Bought Items", "I bought the listed maintenance items."],
+                        ["bought_items", "Bought Items", "I bought the listed items."],
                         ["snoozed", "Snooze Reminder", "Remind me later."],
                         ["not_relevant", "Not Relevant", "This store reminder does not apply."],
-                        ["completed_task", "Mark Task Complete", "I completed the maintenance task."],
+                        [
+                          "completed_task",
+                          getStoreReminderCompleteActionLabel(event),
+                          getStoreReminderCompleteActionDescription(event),
+                        ],
                       ].map(([action, label, description]) => {
                         const selected =
                           String(event.homeowner_action || "").trim().toLowerCase() === action;
