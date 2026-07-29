@@ -2142,6 +2142,53 @@ function HomeownerDeviceEventInsightsSection({ apiBaseUrl, recordId }) {
 }
 
 
+function formatStoreReminderAction(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+
+  const labels = {
+    bought_items: "Bought Items",
+    snoozed: "Snoozed",
+    not_relevant: "Not Relevant",
+    completed_task: "Marked Task Complete",
+  };
+
+  return labels[normalized] || "No action yet";
+}
+
+function formatStoreReminderStatus(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+
+  const labels = {
+    created: "Created",
+    acknowledged: "Acknowledged",
+    snoozed: "Snoozed",
+    dismissed: "Dismissed",
+  };
+
+  return labels[normalized] || "Created";
+}
+
+function getStoreReminderStatusTone(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+
+  if (normalized === "acknowledged") return "bg-emerald-100 text-emerald-800";
+  if (normalized === "snoozed") return "bg-amber-100 text-amber-800";
+  if (normalized === "dismissed") return "bg-slate-100 text-slate-700";
+
+  return "bg-indigo-100 text-indigo-800";
+}
+
+function getStoreReminderActionTone(action, savedAction) {
+  const normalizedAction = String(action || "").trim().toLowerCase();
+  const normalizedSavedAction = String(savedAction || "").trim().toLowerCase();
+
+  if (normalizedAction === normalizedSavedAction) {
+    return "border-emerald-300 bg-emerald-50 text-emerald-900";
+  }
+
+  return "border-indigo-200 bg-white text-indigo-800 hover:bg-indigo-50";
+}
+
 export default function HomeFaxStandardFindingsSection() {
   // Dashboard Monitoring Timeline Pass 1A
   const apiBaseUrl = getApiBaseUrl();
@@ -3696,15 +3743,17 @@ export default function HomeFaxStandardFindingsSection() {
                       </div>
                     </div>
 
-                    <span className="rounded-full bg-indigo-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-indigo-800">
-                      {event.alert_status || "created"}
+                    <span
+                      className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-wide ${getStoreReminderStatusTone(event.alert_status)}`}
+                    >
+                      {formatStoreReminderStatus(event.alert_status)}
                     </span>
                   </div>
 
                   <div className="mt-4 grid gap-3 text-xs font-semibold text-slate-600 sm:grid-cols-2">
                     <div>
-                      <span className="font-black text-slate-800">Action:</span>{" "}
-                      {event.homeowner_action || "none yet"}
+                      <span className="font-black text-slate-800">Saved Action:</span>{" "}
+                      {formatStoreReminderAction(event.homeowner_action)}
                     </div>
 
                     <div>
@@ -3754,32 +3803,55 @@ export default function HomeFaxStandardFindingsSection() {
 
                   {event.homeowner_note ? (
                     <div className="mt-4 rounded-2xl bg-emerald-50 p-4 text-sm leading-6 text-emerald-900">
-                      <span className="font-black">Homeowner note:</span>{" "}
-                      {event.homeowner_note}
+                      <div className="text-xs font-black uppercase tracking-wide text-emerald-800">
+                        Homeowner Action Note
+                      </div>
+                      <div className="mt-1">{event.homeowner_note}</div>
                     </div>
                   ) : null}
 
-                  <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                    {[
-                      ["bought_items", "Bought Items"],
-                      ["snoozed", "Snooze"],
-                      ["not_relevant", "Not Relevant"],
-                      ["completed_task", "Mark Task Complete"],
-                    ].map(([action, label]) => (
-                      <button
-                        key={`${event.id}-${action}`}
-                        type="button"
-                        disabled={busy}
-                        onClick={() => updateStoreReminderAction(event.id, action)}
-                        className={
-                          busy
-                            ? "rounded-2xl bg-slate-300 px-4 py-3 text-sm font-black text-white"
-                            : "rounded-2xl border border-indigo-200 bg-white px-4 py-3 text-sm font-black text-indigo-800 shadow-sm hover:bg-indigo-50"
-                        }
-                      >
-                        {busy ? "Saving..." : label}
-                      </button>
-                    ))}
+                  <div className="mt-4 rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4">
+                    <div className="text-xs font-black uppercase tracking-wide text-indigo-800">
+                      Homeowner Store Reminder Actions
+                    </div>
+
+                    <div className="mt-2 text-sm font-semibold text-slate-700">
+                      Choose what happened when you saw this store reminder.
+                    </div>
+
+                    <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                      {[
+                        ["bought_items", "Bought Items", "I bought the listed maintenance items."],
+                        ["snoozed", "Snooze Reminder", "Remind me later."],
+                        ["not_relevant", "Not Relevant", "This store reminder does not apply."],
+                        ["completed_task", "Mark Task Complete", "I completed the maintenance task."],
+                      ].map(([action, label, description]) => {
+                        const selected =
+                          String(event.homeowner_action || "").trim().toLowerCase() === action;
+
+                        return (
+                          <button
+                            key={`${event.id}-${action}`}
+                            type="button"
+                            disabled={busy}
+                            onClick={() => updateStoreReminderAction(event.id, action)}
+                            className={
+                              busy
+                                ? "rounded-2xl bg-slate-300 px-4 py-3 text-left text-sm font-black text-white"
+                                : `rounded-2xl border px-4 py-3 text-left text-sm font-black shadow-sm ${getStoreReminderActionTone(action, event.homeowner_action)}`
+                            }
+                          >
+                            <div>
+                              {selected ? "✓ " : ""}
+                              {busy ? "Saving..." : label}
+                            </div>
+                            <div className="mt-1 text-xs font-semibold opacity-80">
+                              {description}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               );
