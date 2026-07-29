@@ -2167,6 +2167,10 @@ export default function HomeFaxStandardFindingsSection() {
   const [maintenanceLoading, setMaintenanceLoading] = useState(false);
   const [maintenanceError, setMaintenanceError] = useState("");
   const [maintenanceActionBusyId, setMaintenanceActionBusyId] = useState(null);
+  const [storeReminderPayload, setStoreReminderPayload] = useState(null);
+  const [storeReminderLoading, setStoreReminderLoading] = useState(false);
+  const [storeReminderError, setStoreReminderError] = useState("");
+  const [storeReminderActionBusyId, setStoreReminderActionBusyId] = useState(null);
 
   async function loadMonitoringLifecycle({ quiet = false } = {}) {
     try {
@@ -2366,6 +2370,91 @@ export default function HomeFaxStandardFindingsSection() {
     }
   }
 
+  async function loadStoreReminders({ quiet = false } = {}) {
+    const safeRecordId = String(recordId || "").trim();
+
+    if (!safeRecordId) {
+      setStoreReminderPayload(null);
+      return;
+    }
+
+    if (!quiet) {
+      setStoreReminderLoading(true);
+    }
+
+    setStoreReminderError("");
+
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}/location-alert-events/${encodeURIComponent(safeRecordId)}`
+      );
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || data?.success === false) {
+        throw new Error(
+          data?.message ||
+            data?.error ||
+            data?.detail?.message ||
+            `Failed to load store reminders. HTTP ${response.status}`
+        );
+      }
+
+      setStoreReminderPayload(data);
+    } catch (err) {
+      console.error("Failed to load store reminders", err);
+      setStoreReminderPayload(null);
+      setStoreReminderError(err?.message || "Failed to load store reminders.");
+    } finally {
+      if (!quiet) {
+        setStoreReminderLoading(false);
+      }
+    }
+  }
+
+  async function updateStoreReminderAction(eventId, homeownerAction) {
+    const safeEventId = String(eventId || "").trim();
+
+    if (!safeEventId) return;
+
+    setStoreReminderActionBusyId(safeEventId);
+    setStoreReminderError("");
+
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}/location-alert-event/${encodeURIComponent(safeEventId)}/action`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            homeowner_action: homeownerAction,
+            homeowner_note: `Dashboard action: ${homeownerAction}`,
+          }),
+        }
+      );
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || data?.success === false) {
+        throw new Error(
+          data?.message ||
+            data?.error ||
+            data?.detail?.message ||
+            `Failed to update store reminder. HTTP ${response.status}`
+        );
+      }
+
+      await loadStoreReminders({ quiet: true });
+    } catch (err) {
+      console.error("Failed to update store reminder", err);
+      setStoreReminderError(err?.message || "Failed to update store reminder.");
+    } finally {
+      setStoreReminderActionBusyId(null);
+    }
+  }
+
   async function loadStandardFindings({ quiet = false } = {}) {
     if (!quiet) {
       setLoading(true);
@@ -2431,6 +2520,7 @@ export default function HomeFaxStandardFindingsSection() {
       await loadStandardFindings();
       await loadRepairEvents();
       await loadMaintenanceTasks();
+      await loadStoreReminders();
     }
 
     load();
@@ -2445,6 +2535,7 @@ export default function HomeFaxStandardFindingsSection() {
       loadMonitoringLifecycle({ quiet: true });
       loadRepairEvents({ quiet: true });
       loadMaintenanceTasks({ quiet: true });
+      loadStoreReminders({ quiet: true });
     }
 
     window.addEventListener("homefax:refresh-standard-findings", handleExternalMonitoringRefresh);
@@ -2835,6 +2926,13 @@ export default function HomeFaxStandardFindingsSection() {
   const maintenanceTasks = maintenancePayload?.maintenance_tasks || [];
   const maintenanceSummary = maintenancePayload?.summary || {};
   const maintenanceTaskCount = maintenancePayload?.maintenance_task_count || maintenanceTasks.length || 0;
+
+  const storeReminderEvents = storeReminderPayload?.location_alert_events || [];
+  const storeReminderSummary = storeReminderPayload?.summary || {};
+  const storeReminderEventCount =
+    storeReminderPayload?.location_alert_event_count ||
+    storeReminderEvents.length ||
+    0;
 
   const monitoringEvents = monitoringEventsPayload?.events || [];
 
@@ -3507,6 +3605,189 @@ export default function HomeFaxStandardFindingsSection() {
         ) : (
           <div className="mt-5 rounded-2xl border border-dashed border-emerald-200 bg-white/80 p-5 text-sm font-semibold text-slate-600">
             No maintenance tasks yet. Once HomeFax creates recurring tasks, they will appear here.
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-3xl border border-indigo-200 bg-indigo-50/70 p-5 shadow-sm">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="text-xs font-black uppercase tracking-[0.2em] text-indigo-700">
+              Store Reminders
+            </div>
+            <div className="mt-1 text-lg font-black text-slate-950">
+              Nearby Store Alerts
+            </div>
+            <div className="mt-1 text-sm leading-6 text-slate-600">
+              HomeFax connects maintenance tasks to relevant store reminders when a homeowner is near a useful store.
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => loadStoreReminders({ quiet: false })}
+            className="rounded-full border border-indigo-200 bg-white px-4 py-2 text-xs font-black text-indigo-800 shadow-sm hover:bg-indigo-50"
+          >
+            Refresh Store Reminders
+          </button>
+        </div>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="rounded-2xl bg-white p-4 shadow-sm">
+            <div className="text-[11px] font-black uppercase tracking-wide text-slate-500">Alerts</div>
+            <div className="mt-1 text-2xl font-black text-slate-950">{storeReminderEventCount}</div>
+          </div>
+
+          <div className="rounded-2xl bg-white p-4 shadow-sm">
+            <div className="text-[11px] font-black uppercase tracking-wide text-blue-600">Created</div>
+            <div className="mt-1 text-2xl font-black text-blue-700">{storeReminderSummary.created || 0}</div>
+          </div>
+
+          <div className="rounded-2xl bg-white p-4 shadow-sm">
+            <div className="text-[11px] font-black uppercase tracking-wide text-emerald-600">Acknowledged</div>
+            <div className="mt-1 text-2xl font-black text-emerald-700">{storeReminderSummary.acknowledged || 0}</div>
+          </div>
+
+          <div className="rounded-2xl bg-white p-4 shadow-sm">
+            <div className="text-[11px] font-black uppercase tracking-wide text-purple-600">Bought Items</div>
+            <div className="mt-1 text-2xl font-black text-purple-700">{storeReminderSummary.bought_items || 0}</div>
+          </div>
+
+          <div className="rounded-2xl bg-white p-4 shadow-sm">
+            <div className="text-[11px] font-black uppercase tracking-wide text-amber-600">Snoozed</div>
+            <div className="mt-1 text-2xl font-black text-amber-700">{storeReminderSummary.snoozed || 0}</div>
+          </div>
+        </div>
+
+        {storeReminderLoading ? (
+          <div className="mt-4 rounded-2xl border border-indigo-200 bg-white p-4 text-sm font-semibold text-slate-600">
+            Loading store reminders...
+          </div>
+        ) : null}
+
+        {storeReminderError ? (
+          <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">
+            {storeReminderError}
+          </div>
+        ) : null}
+
+        {storeReminderEvents.length ? (
+          <div className="mt-5 grid gap-4 lg:grid-cols-2">
+            {storeReminderEvents.map((event) => {
+              const shoppingList = Array.isArray(event.shopping_list_json)
+                ? event.shopping_list_json
+                : [];
+
+              const eventId = String(event.id || "");
+              const busy = storeReminderActionBusyId === eventId;
+
+              return (
+                <div
+                  key={event.id || `${event.store_name}-${event.maintenance_task_id}`}
+                  className="rounded-3xl border border-indigo-100 bg-white p-5 shadow-sm"
+                >
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <div className="text-base font-black text-slate-950">
+                        {event.store_name || "Nearby store"}
+                      </div>
+                      <div className="mt-1 text-sm font-bold text-slate-600">
+                        {event.maintenance_task_title || "Maintenance reminder"}
+                      </div>
+                    </div>
+
+                    <span className="rounded-full bg-indigo-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-indigo-800">
+                      {event.alert_status || "created"}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 text-xs font-semibold text-slate-600 sm:grid-cols-2">
+                    <div>
+                      <span className="font-black text-slate-800">Action:</span>{" "}
+                      {event.homeowner_action || "none yet"}
+                    </div>
+
+                    <div>
+                      <span className="font-black text-slate-800">Distance:</span>{" "}
+                      {event.distance_meters ?? "unknown"} meters
+                    </div>
+
+                    <div>
+                      <span className="font-black text-slate-800">Store Category:</span>{" "}
+                      {event.store_category || "hardware_store"}
+                    </div>
+
+                    <div>
+                      <span className="font-black text-slate-800">Triggered:</span>{" "}
+                      {event.triggered_at || "not available"}
+                    </div>
+
+                    <div>
+                      <span className="font-black text-slate-800">Next Due:</span>{" "}
+                      {event.maintenance_task_next_due_at || "not available"}
+                    </div>
+
+                    <div>
+                      <span className="font-black text-slate-800">Rule:</span>{" "}
+                      #{event.location_alert_rule_id || "none"}
+                    </div>
+                  </div>
+
+                  {shoppingList.length ? (
+                    <div className="mt-4 rounded-2xl bg-indigo-50 p-4">
+                      <div className="text-xs font-black uppercase tracking-wide text-indigo-800">
+                        Shopping List
+                      </div>
+                      <ul className="mt-2 list-disc space-y-1 pl-5 text-sm font-semibold text-slate-700">
+                        {shoppingList.map((item, index) => (
+                          <li key={`${event.id}-store-shopping-${index}`}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+
+                  {event.alert_message ? (
+                    <div className="mt-4 whitespace-pre-line rounded-2xl bg-slate-50 p-4 text-sm leading-6 text-slate-700">
+                      {event.alert_message}
+                    </div>
+                  ) : null}
+
+                  {event.homeowner_note ? (
+                    <div className="mt-4 rounded-2xl bg-emerald-50 p-4 text-sm leading-6 text-emerald-900">
+                      <span className="font-black">Homeowner note:</span>{" "}
+                      {event.homeowner_note}
+                    </div>
+                  ) : null}
+
+                  <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                    {[
+                      ["bought_items", "Bought Items"],
+                      ["snoozed", "Snooze"],
+                      ["not_relevant", "Not Relevant"],
+                      ["completed_task", "Mark Task Complete"],
+                    ].map(([action, label]) => (
+                      <button
+                        key={`${event.id}-${action}`}
+                        type="button"
+                        disabled={busy}
+                        onClick={() => updateStoreReminderAction(event.id, action)}
+                        className={
+                          busy
+                            ? "rounded-2xl bg-slate-300 px-4 py-3 text-sm font-black text-white"
+                            : "rounded-2xl border border-indigo-200 bg-white px-4 py-3 text-sm font-black text-indigo-800 shadow-sm hover:bg-indigo-50"
+                        }
+                      >
+                        {busy ? "Saving..." : label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="mt-5 rounded-2xl border border-dashed border-indigo-200 bg-white/80 p-5 text-sm font-semibold text-slate-600">
+            No store reminders yet. When HomeFax receives a nearby-store event for an active maintenance task, reminders will appear here.
           </div>
         )}
       </div>
