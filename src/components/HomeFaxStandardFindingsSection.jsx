@@ -2222,6 +2222,20 @@ export default function HomeFaxStandardFindingsSection() {
   const [locationPermissionLoading, setLocationPermissionLoading] = useState(false);
   const [locationPermissionError, setLocationPermissionError] = useState("");
   const [locationPermissionBusyAction, setLocationPermissionBusyAction] = useState("");
+  const [shoppingItemsPayload, setShoppingItemsPayload] = useState(null);
+  const [shoppingItemsLoading, setShoppingItemsLoading] = useState(false);
+  const [shoppingItemsError, setShoppingItemsError] = useState("");
+  const [shoppingItemActionBusyId, setShoppingItemActionBusyId] = useState(null);
+  const [shoppingItemForm, setShoppingItemForm] = useState({
+    item_name: "",
+    quantity: "",
+    store_category: "grocery_store",
+    needed_by: "",
+    reminder_window_days: 14,
+    urgency: "normal",
+    maintenance_task_id: "",
+    notes: "",
+  });
 
   async function loadMonitoringLifecycle({ quiet = false } = {}) {
     try {
@@ -2418,6 +2432,207 @@ export default function HomeFaxStandardFindingsSection() {
       setMaintenanceError(err?.message || "Failed to complete maintenance task.");
     } finally {
       setMaintenanceActionBusyId(null);
+    }
+  }
+
+  async function loadHomeCareShoppingItems({ quiet = false } = {}) {
+    const safeRecordId = String(recordId || "").trim();
+
+    if (!safeRecordId) {
+      setShoppingItemsPayload(null);
+      return;
+    }
+
+    if (!quiet) {
+      setShoppingItemsLoading(true);
+    }
+
+    setShoppingItemsError("");
+
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}/home-care-shopping-items/${encodeURIComponent(safeRecordId)}`
+      );
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || data?.success === false) {
+        throw new Error(
+          data?.message ||
+            data?.error ||
+            data?.detail?.message ||
+            `Failed to load shopping items. HTTP ${response.status}`
+        );
+      }
+
+      setShoppingItemsPayload(data);
+    } catch (err) {
+      console.error("Failed to load home-care shopping items", err);
+      setShoppingItemsPayload(null);
+      setShoppingItemsError(err?.message || "Failed to load shopping items.");
+    } finally {
+      if (!quiet) {
+        setShoppingItemsLoading(false);
+      }
+    }
+  }
+
+  async function createHomeCareShoppingItem(event) {
+    event.preventDefault();
+
+    const safeRecordId = String(recordId || "").trim();
+    const itemName = String(shoppingItemForm.item_name || "").trim();
+
+    if (!safeRecordId) return;
+
+    if (!itemName) {
+      setShoppingItemsError("Item name is required.");
+      return;
+    }
+
+    setShoppingItemActionBusyId("create");
+    setShoppingItemsError("");
+
+    try {
+      const maintenanceTaskId = String(shoppingItemForm.maintenance_task_id || "").trim();
+
+      const response = await fetch(`${apiBaseUrl}/home-care-shopping-items`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          tenant_id: "lateef-home-inspection",
+          property_id: "",
+          record_id: safeRecordId,
+          user_id: "homeowner-smoke-test",
+          maintenance_task_id: maintenanceTaskId ? Number(maintenanceTaskId) : null,
+          item_name: itemName,
+          quantity: String(shoppingItemForm.quantity || "").trim(),
+          store_category: String(shoppingItemForm.store_category || "hardware_store").trim(),
+          needed_by: String(shoppingItemForm.needed_by || "").trim(),
+          reminder_window_days: Number(shoppingItemForm.reminder_window_days || 14),
+          urgency: String(shoppingItemForm.urgency || "normal").trim(),
+          item_status: "needed",
+          notes: String(shoppingItemForm.notes || "").trim(),
+          source_type: maintenanceTaskId ? "maintenance_task" : "manual",
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || data?.success === false) {
+        throw new Error(
+          data?.message ||
+            data?.error ||
+            data?.detail?.message ||
+            `Failed to create shopping item. HTTP ${response.status}`
+        );
+      }
+
+      setShoppingItemForm({
+        item_name: "",
+        quantity: "",
+        store_category: "grocery_store",
+        needed_by: "",
+        reminder_window_days: 14,
+        urgency: "normal",
+        maintenance_task_id: "",
+        notes: "",
+      });
+
+      await loadHomeCareShoppingItems({ quiet: true });
+    } catch (err) {
+      console.error("Failed to create shopping item", err);
+      setShoppingItemsError(err?.message || "Failed to create shopping item.");
+    } finally {
+      setShoppingItemActionBusyId(null);
+    }
+  }
+
+  async function markShoppingItemPurchased(itemId) {
+    const safeItemId = String(itemId || "").trim();
+
+    if (!safeItemId) return;
+
+    setShoppingItemActionBusyId(safeItemId);
+    setShoppingItemsError("");
+
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}/home-care-shopping-item/${encodeURIComponent(safeItemId)}/mark-purchased`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            purchased_by: "homeowner-smoke-test",
+            purchase_note: "Marked purchased from HomeFax dashboard.",
+          }),
+        }
+      );
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || data?.success === false) {
+        throw new Error(
+          data?.message ||
+            data?.error ||
+            data?.detail?.message ||
+            `Failed to mark item purchased. HTTP ${response.status}`
+        );
+      }
+
+      await loadHomeCareShoppingItems({ quiet: true });
+    } catch (err) {
+      console.error("Failed to mark shopping item purchased", err);
+      setShoppingItemsError(err?.message || "Failed to mark item purchased.");
+    } finally {
+      setShoppingItemActionBusyId(null);
+    }
+  }
+
+  async function archiveShoppingItem(itemId) {
+    const safeItemId = String(itemId || "").trim();
+
+    if (!safeItemId) return;
+
+    setShoppingItemActionBusyId(safeItemId);
+    setShoppingItemsError("");
+
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}/home-care-shopping-item/${encodeURIComponent(safeItemId)}/archive`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            archived_by: "homeowner-smoke-test",
+            archive_reason: "Archived from HomeFax dashboard.",
+          }),
+        }
+      );
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || data?.success === false) {
+        throw new Error(
+          data?.message ||
+            data?.error ||
+            data?.detail?.message ||
+            `Failed to archive shopping item. HTTP ${response.status}`
+        );
+      }
+
+      await loadHomeCareShoppingItems({ quiet: true });
+    } catch (err) {
+      console.error("Failed to archive shopping item", err);
+      setShoppingItemsError(err?.message || "Failed to archive shopping item.");
+    } finally {
+      setShoppingItemActionBusyId(null);
     }
   }
 
@@ -2817,6 +3032,7 @@ export default function HomeFaxStandardFindingsSection() {
       await loadMaintenanceTasks();
       await loadStoreReminders();
       await loadLocationPermission();
+      await loadHomeCareShoppingItems();
     }
 
     load();
@@ -2833,6 +3049,7 @@ export default function HomeFaxStandardFindingsSection() {
       loadMaintenanceTasks({ quiet: true });
       loadStoreReminders({ quiet: true });
       loadLocationPermission({ quiet: true });
+      loadHomeCareShoppingItems({ quiet: true });
     }
 
     window.addEventListener("homefax:refresh-standard-findings", handleExternalMonitoringRefresh);
@@ -3242,6 +3459,13 @@ export default function HomeFaxStandardFindingsSection() {
     String(locationPermission.paused || "no").trim().toLowerCase() === "yes";
   const locationPermissionIsActive =
     locationPermissionEnabled && !locationPermissionPaused && locationPermissionStatus === "enabled";
+
+  const shoppingItems = shoppingItemsPayload?.shopping_items || [];
+  const shoppingItemsSummary = shoppingItemsPayload?.summary || {};
+  const shoppingItemCount =
+    shoppingItemsPayload?.shopping_item_count ||
+    shoppingItems.length ||
+    0;
 
   const monitoringEvents = monitoringEventsPayload?.events || [];
 
@@ -4112,6 +4336,336 @@ export default function HomeFaxStandardFindingsSection() {
               </button>
             ) : null}
           </div>
+        </div>
+
+        <div className="mt-5 rounded-3xl border border-purple-100 bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div className="text-xs font-black uppercase tracking-[0.2em] text-purple-700">
+                Home-Care Shopping List
+              </div>
+
+              <div className="mt-1 text-lg font-black text-slate-950">
+                Supplies Needed for This Home
+              </div>
+
+              <div className="mt-2 text-sm leading-6 text-slate-600">
+                Add items with their own needed-by dates, urgency, and store category.
+                These items can be independent or linked to a maintenance task.
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => loadHomeCareShoppingItems({ quiet: false })}
+              className="rounded-full border border-purple-200 bg-white px-4 py-2 text-xs font-black text-purple-800 shadow-sm hover:bg-purple-50"
+            >
+              Refresh Shopping Items
+            </button>
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="rounded-2xl bg-purple-50 p-4">
+              <div className="text-[11px] font-black uppercase tracking-wide text-purple-700">Items</div>
+              <div className="mt-1 text-2xl font-black text-slate-950">{shoppingItemCount}</div>
+            </div>
+
+            <div className="rounded-2xl bg-purple-50 p-4">
+              <div className="text-[11px] font-black uppercase tracking-wide text-purple-700">Needed</div>
+              <div className="mt-1 text-2xl font-black text-purple-800">{shoppingItemsSummary.needed || 0}</div>
+            </div>
+
+            <div className="rounded-2xl bg-purple-50 p-4">
+              <div className="text-[11px] font-black uppercase tracking-wide text-emerald-700">Purchased</div>
+              <div className="mt-1 text-2xl font-black text-emerald-800">{shoppingItemsSummary.purchased || 0}</div>
+            </div>
+
+            <div className="rounded-2xl bg-purple-50 p-4">
+              <div className="text-[11px] font-black uppercase tracking-wide text-red-700">Urgent</div>
+              <div className="mt-1 text-2xl font-black text-red-800">{shoppingItemsSummary.urgent || 0}</div>
+            </div>
+
+            <div className="rounded-2xl bg-purple-50 p-4">
+              <div className="text-[11px] font-black uppercase tracking-wide text-amber-700">Needed Soon</div>
+              <div className="mt-1 text-2xl font-black text-amber-800">{shoppingItemsSummary.needed_soon || 0}</div>
+            </div>
+          </div>
+
+          {shoppingItemsLoading ? (
+            <div className="mt-4 rounded-2xl border border-purple-200 bg-purple-50 p-4 text-sm font-semibold text-purple-800">
+              Loading shopping items...
+            </div>
+          ) : null}
+
+          {shoppingItemsError ? (
+            <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">
+              {shoppingItemsError}
+            </div>
+          ) : null}
+
+          <form
+            onSubmit={createHomeCareShoppingItem}
+            className="mt-5 rounded-3xl border border-purple-100 bg-purple-50/60 p-5"
+          >
+            <div className="text-sm font-black text-slate-950">
+              Add Home-Care Shopping Item
+            </div>
+
+            <div className="mt-4 grid gap-3 lg:grid-cols-2">
+              <label className="text-xs font-black uppercase tracking-wide text-slate-700">
+                Item Name
+                <input
+                  value={shoppingItemForm.item_name}
+                  onChange={(event) =>
+                    setShoppingItemForm((current) => ({
+                      ...current,
+                      item_name: event.target.value,
+                    }))
+                  }
+                  placeholder="Bleach, garbage bags, batteries..."
+                  className="mt-1 w-full rounded-2xl border border-purple-100 bg-white px-4 py-3 text-sm font-semibold normal-case tracking-normal text-slate-900 outline-none focus:border-purple-300"
+                />
+              </label>
+
+              <label className="text-xs font-black uppercase tracking-wide text-slate-700">
+                Quantity
+                <input
+                  value={shoppingItemForm.quantity}
+                  onChange={(event) =>
+                    setShoppingItemForm((current) => ({
+                      ...current,
+                      quantity: event.target.value,
+                    }))
+                  }
+                  placeholder="1 bottle, 1 box, 2 packs..."
+                  className="mt-1 w-full rounded-2xl border border-purple-100 bg-white px-4 py-3 text-sm font-semibold normal-case tracking-normal text-slate-900 outline-none focus:border-purple-300"
+                />
+              </label>
+
+              <label className="text-xs font-black uppercase tracking-wide text-slate-700">
+                Store Category
+                <select
+                  value={shoppingItemForm.store_category}
+                  onChange={(event) =>
+                    setShoppingItemForm((current) => ({
+                      ...current,
+                      store_category: event.target.value,
+                    }))
+                  }
+                  className="mt-1 w-full rounded-2xl border border-purple-100 bg-white px-4 py-3 text-sm font-semibold normal-case tracking-normal text-slate-900 outline-none focus:border-purple-300"
+                >
+                  <option value="grocery_store">Grocery Store</option>
+                  <option value="hardware_store">Hardware Store</option>
+                  <option value="big_box_store">Big Box Store</option>
+                  <option value="pharmacy">Pharmacy</option>
+                  <option value="home_goods_store">Home Goods Store</option>
+                </select>
+              </label>
+
+              <label className="text-xs font-black uppercase tracking-wide text-slate-700">
+                Needed By
+                <input
+                  type="datetime-local"
+                  value={shoppingItemForm.needed_by}
+                  onChange={(event) =>
+                    setShoppingItemForm((current) => ({
+                      ...current,
+                      needed_by: event.target.value,
+                    }))
+                  }
+                  className="mt-1 w-full rounded-2xl border border-purple-100 bg-white px-4 py-3 text-sm font-semibold normal-case tracking-normal text-slate-900 outline-none focus:border-purple-300"
+                />
+              </label>
+
+              <label className="text-xs font-black uppercase tracking-wide text-slate-700">
+                Urgency
+                <select
+                  value={shoppingItemForm.urgency}
+                  onChange={(event) =>
+                    setShoppingItemForm((current) => ({
+                      ...current,
+                      urgency: event.target.value,
+                    }))
+                  }
+                  className="mt-1 w-full rounded-2xl border border-purple-100 bg-white px-4 py-3 text-sm font-semibold normal-case tracking-normal text-slate-900 outline-none focus:border-purple-300"
+                >
+                  <option value="low">Low</option>
+                  <option value="normal">Normal</option>
+                  <option value="soon">Soon</option>
+                  <option value="urgent">Urgent</option>
+                </select>
+              </label>
+
+              <label className="text-xs font-black uppercase tracking-wide text-slate-700">
+                Link to Maintenance Task
+                <select
+                  value={shoppingItemForm.maintenance_task_id}
+                  onChange={(event) =>
+                    setShoppingItemForm((current) => ({
+                      ...current,
+                      maintenance_task_id: event.target.value,
+                    }))
+                  }
+                  className="mt-1 w-full rounded-2xl border border-purple-100 bg-white px-4 py-3 text-sm font-semibold normal-case tracking-normal text-slate-900 outline-none focus:border-purple-300"
+                >
+                  <option value="">No linked task</option>
+                  {maintenanceTasks.map((task) => (
+                    <option key={task.id} value={task.id}>
+                      {task.title || `Task #${task.id}`}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <label className="mt-3 block text-xs font-black uppercase tracking-wide text-slate-700">
+              Notes
+              <textarea
+                value={shoppingItemForm.notes}
+                onChange={(event) =>
+                  setShoppingItemForm((current) => ({
+                    ...current,
+                    notes: event.target.value,
+                  }))
+                }
+                placeholder="Needed for basement cleanup, leak repair, seasonal maintenance..."
+                rows={3}
+                className="mt-1 w-full rounded-2xl border border-purple-100 bg-white px-4 py-3 text-sm font-semibold normal-case tracking-normal text-slate-900 outline-none focus:border-purple-300"
+              />
+            </label>
+
+            <button
+              type="submit"
+              disabled={shoppingItemActionBusyId === "create"}
+              className={
+                shoppingItemActionBusyId === "create"
+                  ? "mt-4 rounded-2xl bg-slate-300 px-4 py-3 text-sm font-black text-white"
+                  : "mt-4 rounded-2xl bg-purple-700 px-4 py-3 text-sm font-black text-white shadow-sm hover:bg-purple-800"
+              }
+            >
+              {shoppingItemActionBusyId === "create" ? "Saving Item..." : "Save Shopping Item"}
+            </button>
+          </form>
+
+          {shoppingItems.length ? (
+            <div className="mt-5 grid gap-4 lg:grid-cols-2">
+              {shoppingItems.map((item) => {
+                const itemId = String(item.id || "");
+                const busy = shoppingItemActionBusyId === itemId;
+                const purchased = item.item_status === "purchased";
+
+                return (
+                  <div
+                    key={item.id || item.item_name}
+                    className="rounded-3xl border border-purple-100 bg-white p-5 shadow-sm"
+                  >
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div>
+                        <div className="text-base font-black text-slate-950">
+                          {item.item_name || "Shopping item"}
+                        </div>
+                        <div className="mt-1 text-sm font-bold text-slate-600">
+                          {item.quantity || "Quantity not set"}
+                        </div>
+                      </div>
+
+                      <span
+                        className={
+                          purchased
+                            ? "rounded-full bg-emerald-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-emerald-800"
+                            : item.urgency === "urgent"
+                              ? "rounded-full bg-red-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-red-800"
+                              : item.urgency === "soon"
+                                ? "rounded-full bg-amber-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-amber-800"
+                                : "rounded-full bg-purple-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-purple-800"
+                        }
+                      >
+                        {purchased ? "Purchased" : item.urgency || "normal"}
+                      </span>
+                    </div>
+
+                    <div className="mt-4 grid gap-3 text-xs font-semibold text-slate-600 sm:grid-cols-2">
+                      <div>
+                        <span className="font-black text-slate-800">Store Category:</span>{" "}
+                        {item.store_category || "hardware_store"}
+                      </div>
+
+                      <div>
+                        <span className="font-black text-slate-800">Needed By:</span>{" "}
+                        {item.needed_by || "not scheduled"}
+                      </div>
+
+                      <div>
+                        <span className="font-black text-slate-800">Needed Status:</span>{" "}
+                        {item.needed_by_status || "unscheduled"}
+                      </div>
+
+                      <div>
+                        <span className="font-black text-slate-800">Item Status:</span>{" "}
+                        {item.item_status || "needed"}
+                      </div>
+
+                      <div>
+                        <span className="font-black text-slate-800">Linked Task:</span>{" "}
+                        {item.maintenance_task_title || "none"}
+                      </div>
+
+                      <div>
+                        <span className="font-black text-slate-800">Source:</span>{" "}
+                        {item.source_type || "manual"}
+                      </div>
+                    </div>
+
+                    {item.notes ? (
+                      <div className="mt-4 rounded-2xl bg-slate-50 p-4 text-sm leading-6 text-slate-700">
+                        <span className="font-black text-slate-900">Notes:</span>{" "}
+                        {item.notes}
+                      </div>
+                    ) : null}
+
+                    {item.purchase_note ? (
+                      <div className="mt-4 rounded-2xl bg-emerald-50 p-4 text-sm leading-6 text-emerald-900">
+                        <div className="text-xs font-black uppercase tracking-wide text-emerald-800">
+                          Purchase Note
+                        </div>
+                        <div className="mt-1">{item.purchase_note}</div>
+                      </div>
+                    ) : null}
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {!purchased ? (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => markShoppingItemPurchased(item.id)}
+                          className={
+                            busy
+                              ? "rounded-2xl bg-slate-300 px-4 py-3 text-sm font-black text-white"
+                              : "rounded-2xl bg-emerald-700 px-4 py-3 text-sm font-black text-white shadow-sm hover:bg-emerald-800"
+                          }
+                        >
+                          {busy ? "Saving..." : "Mark Purchased"}
+                        </button>
+                      ) : null}
+
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => archiveShoppingItem(item.id)}
+                        className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 shadow-sm hover:bg-slate-50"
+                      >
+                        {busy ? "Saving..." : "Archive"}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="mt-5 rounded-2xl border border-dashed border-purple-200 bg-white/80 p-5 text-sm font-semibold text-slate-600">
+              No shopping items yet. Add supplies like bleach, garbage bags, batteries, caulk, filters, or leak sensors.
+            </div>
+          )}
         </div>
 
         {storeReminderEvents.length ? (
