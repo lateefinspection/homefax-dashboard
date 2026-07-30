@@ -2304,6 +2304,9 @@ export default function HomeFaxStandardFindingsSection() {
     urgency: "normal",
     notes: "",
   });
+  const [storeNotificationPayload, setStoreNotificationPayload] = useState(null);
+  const [storeNotificationLoading, setStoreNotificationLoading] = useState(false);
+  const [storeNotificationError, setStoreNotificationError] = useState("");
 
   async function loadMonitoringLifecycle({ quiet = false } = {}) {
     try {
@@ -2536,6 +2539,48 @@ export default function HomeFaxStandardFindingsSection() {
       urgency: "normal",
       notes: "",
     });
+  }
+
+  async function loadStoreReminderNotifications({ quiet = false } = {}) {
+    const safeRecordId = String(recordId || "").trim();
+
+    if (!safeRecordId) {
+      setStoreNotificationPayload(null);
+      return;
+    }
+
+    if (!quiet) {
+      setStoreNotificationLoading(true);
+    }
+
+    setStoreNotificationError("");
+
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}/store-reminder-notifications/${encodeURIComponent(safeRecordId)}`
+      );
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || data?.success === false) {
+        throw new Error(
+          data?.message ||
+            data?.error ||
+            data?.detail?.message ||
+            `Failed to load store reminder notifications. HTTP ${response.status}`
+        );
+      }
+
+      setStoreNotificationPayload(data);
+    } catch (err) {
+      console.error("Failed to load store reminder notifications", err);
+      setStoreNotificationPayload(null);
+      setStoreNotificationError(err?.message || "Failed to load store reminder notifications.");
+    } finally {
+      if (!quiet) {
+        setStoreNotificationLoading(false);
+      }
+    }
   }
 
   async function loadHomeCareShoppingItems({ quiet = false } = {}) {
@@ -3193,6 +3238,7 @@ export default function HomeFaxStandardFindingsSection() {
       await loadStoreReminders();
       await loadLocationPermission();
       await loadHomeCareShoppingItems();
+      await loadStoreReminderNotifications();
     }
 
     load();
@@ -3210,6 +3256,7 @@ export default function HomeFaxStandardFindingsSection() {
       loadStoreReminders({ quiet: true });
       loadLocationPermission({ quiet: true });
       loadHomeCareShoppingItems({ quiet: true });
+      loadStoreReminderNotifications({ quiet: true });
     }
 
     window.addEventListener("homefax:refresh-standard-findings", handleExternalMonitoringRefresh);
@@ -3625,6 +3672,13 @@ export default function HomeFaxStandardFindingsSection() {
   const shoppingItemCount =
     shoppingItemsPayload?.shopping_item_count ||
     shoppingItems.length ||
+    0;
+
+  const storeReminderNotifications = storeNotificationPayload?.notifications || [];
+  const storeReminderNotificationSummary = storeNotificationPayload?.summary || {};
+  const storeReminderNotificationCount =
+    storeNotificationPayload?.notification_count ||
+    storeReminderNotifications.length ||
     0;
 
   const monitoringEvents = monitoringEventsPayload?.events || [];
@@ -4982,6 +5036,199 @@ export default function HomeFaxStandardFindingsSection() {
           ) : (
             <div className="mt-5 rounded-2xl border border-dashed border-purple-200 bg-white/80 p-5 text-sm font-semibold text-slate-600">
               No shopping items yet. Add supplies like bleach, garbage bags, batteries, caulk, filters, or leak sensors.
+            </div>
+          )}
+        </div>
+
+        <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div className="text-xs font-black uppercase tracking-[0.2em] text-slate-700">
+                Admin Notification Debug
+              </div>
+
+              <div className="mt-1 text-lg font-black text-slate-950">
+                Store Reminder Notification History
+              </div>
+
+              <div className="mt-2 text-sm leading-6 text-slate-600">
+                Admin-only visibility for debugging notification queue state, delivery status,
+                provider message ids, and alert-to-notification linkage.
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => loadStoreReminderNotifications({ quiet: false })}
+              className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-800 shadow-sm hover:bg-slate-50"
+            >
+              Refresh Notifications
+            </button>
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-2xl bg-slate-50 p-4">
+              <div className="text-[11px] font-black uppercase tracking-wide text-slate-600">Notifications</div>
+              <div className="mt-1 text-2xl font-black text-slate-950">{storeReminderNotificationCount}</div>
+            </div>
+
+            <div className="rounded-2xl bg-blue-50 p-4">
+              <div className="text-[11px] font-black uppercase tracking-wide text-blue-700">Queued</div>
+              <div className="mt-1 text-2xl font-black text-blue-800">{storeReminderNotificationSummary.queued || 0}</div>
+            </div>
+
+            <div className="rounded-2xl bg-emerald-50 p-4">
+              <div className="text-[11px] font-black uppercase tracking-wide text-emerald-700">Sent</div>
+              <div className="mt-1 text-2xl font-black text-emerald-800">{storeReminderNotificationSummary.sent || 0}</div>
+            </div>
+
+            <div className="rounded-2xl bg-red-50 p-4">
+              <div className="text-[11px] font-black uppercase tracking-wide text-red-700">Failed</div>
+              <div className="mt-1 text-2xl font-black text-red-800">{storeReminderNotificationSummary.failed || 0}</div>
+            </div>
+          </div>
+
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-2xl bg-slate-50 p-4">
+              <div className="text-[11px] font-black uppercase tracking-wide text-slate-600">In-App</div>
+              <div className="mt-1 text-xl font-black text-slate-950">{storeReminderNotificationSummary.in_app || 0}</div>
+            </div>
+
+            <div className="rounded-2xl bg-slate-50 p-4">
+              <div className="text-[11px] font-black uppercase tracking-wide text-slate-600">Email</div>
+              <div className="mt-1 text-xl font-black text-slate-950">{storeReminderNotificationSummary.email || 0}</div>
+            </div>
+
+            <div className="rounded-2xl bg-slate-50 p-4">
+              <div className="text-[11px] font-black uppercase tracking-wide text-slate-600">SMS</div>
+              <div className="mt-1 text-xl font-black text-slate-950">{storeReminderNotificationSummary.sms || 0}</div>
+            </div>
+
+            <div className="rounded-2xl bg-slate-50 p-4">
+              <div className="text-[11px] font-black uppercase tracking-wide text-slate-600">Push</div>
+              <div className="mt-1 text-xl font-black text-slate-950">{storeReminderNotificationSummary.push || 0}</div>
+            </div>
+          </div>
+
+          {storeNotificationLoading ? (
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-700">
+              Loading store reminder notifications...
+            </div>
+          ) : null}
+
+          {storeNotificationError ? (
+            <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">
+              {storeNotificationError}
+            </div>
+          ) : null}
+
+          {storeReminderNotifications.length ? (
+            <div className="mt-5 grid gap-4">
+              {storeReminderNotifications.map((notification) => (
+                <div
+                  key={notification.id}
+                  className="rounded-3xl border border-slate-100 bg-slate-50 p-5"
+                >
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <div className="text-base font-black text-slate-950">
+                        Notification #{notification.id}
+                      </div>
+
+                      <div className="mt-1 text-sm font-bold text-slate-700">
+                        {notification.title || "Store reminder notification"}
+                      </div>
+                    </div>
+
+                    <span
+                      className={
+                        notification.notification_status === "sent"
+                          ? "rounded-full bg-emerald-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-emerald-800"
+                          : notification.notification_status === "failed"
+                            ? "rounded-full bg-red-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-red-800"
+                            : "rounded-full bg-blue-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-blue-800"
+                      }
+                    >
+                      {notification.notification_status || "queued"}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 text-xs font-semibold text-slate-600 sm:grid-cols-2 lg:grid-cols-3">
+                    <div>
+                      <span className="font-black text-slate-800">Alert Event:</span>{" "}
+                      #{notification.location_alert_event_id || "none"}
+                    </div>
+
+                    <div>
+                      <span className="font-black text-slate-800">Channel:</span>{" "}
+                      {notification.channel || "in_app"}
+                    </div>
+
+                    <div>
+                      <span className="font-black text-slate-800">Recipient:</span>{" "}
+                      {notification.recipient || "not set"}
+                    </div>
+
+                    <div>
+                      <span className="font-black text-slate-800">Queued:</span>{" "}
+                      {notification.queued_at || "not queued"}
+                    </div>
+
+                    <div>
+                      <span className="font-black text-slate-800">Sent:</span>{" "}
+                      {notification.sent_at || "not sent"}
+                    </div>
+
+                    <div>
+                      <span className="font-black text-slate-800">Failed:</span>{" "}
+                      {notification.failed_at || "not failed"}
+                    </div>
+
+                    <div>
+                      <span className="font-black text-slate-800">Provider ID:</span>{" "}
+                      {notification.provider_message_id || "none"}
+                    </div>
+
+                    <div>
+                      <span className="font-black text-slate-800">Type:</span>{" "}
+                      {notification.notification_type || "store_reminder"}
+                    </div>
+
+                    <div>
+                      <span className="font-black text-slate-800">Record:</span>{" "}
+                      {notification.record_id || recordId}
+                    </div>
+                  </div>
+
+                  {notification.body ? (
+                    <div className="mt-4 rounded-2xl bg-white p-4">
+                      <div className="text-xs font-black uppercase tracking-wide text-slate-700">
+                        Notification Body
+                      </div>
+                      <pre className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">
+                        {notification.body}
+                      </pre>
+                    </div>
+                  ) : null}
+
+                  {notification.error_message ? (
+                    <div className="mt-4 rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-700">
+                      {notification.error_message}
+                    </div>
+                  ) : null}
+
+                  {notification.note ? (
+                    <div className="mt-4 rounded-2xl bg-emerald-50 p-4 text-sm leading-6 text-emerald-900">
+                      <span className="font-black">Admin Note:</span>{" "}
+                      {notification.note}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-5 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-5 text-sm font-semibold text-slate-600">
+              No store reminder notifications have been queued for this record yet.
             </div>
           )}
         </div>
