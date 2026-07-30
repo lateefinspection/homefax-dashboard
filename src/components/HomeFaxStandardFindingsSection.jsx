@@ -2309,6 +2309,34 @@ export default function HomeFaxStandardFindingsSection() {
   const [storeNotificationError, setStoreNotificationError] = useState("");
   const [showAdminNotificationDebug, setShowAdminNotificationDebug] = useState(false);
 
+  const [notificationPreferencePayload, setNotificationPreferencePayload] = useState(null);
+  const [notificationPreferenceLoading, setNotificationPreferenceLoading] = useState(false);
+  const [notificationPreferenceSaving, setNotificationPreferenceSaving] = useState(false);
+  const [notificationPreferenceError, setNotificationPreferenceError] = useState("");
+  const [notificationPreferenceSuccess, setNotificationPreferenceSuccess] = useState("");
+  const [notificationPreferenceForm, setNotificationPreferenceForm] = useState({
+    user_id: "homeowner-smoke-test",
+
+    in_app_enabled: "yes",
+    email_enabled: "no",
+    sms_enabled: "yes",
+    push_enabled: "no",
+
+    store_reminders_enabled: "yes",
+    maintenance_reminders_enabled: "yes",
+    weather_alerts_enabled: "yes",
+    device_alerts_enabled: "yes",
+
+    quiet_hours_enabled: "yes",
+    quiet_hours_start: "21:00",
+    quiet_hours_end: "08:00",
+    timezone: "America/Chicago",
+
+    email_recipient: "test-homeowner@example.com",
+    sms_recipient: "+15555550123",
+    notes: "",
+  });
+
   async function loadMonitoringLifecycle({ quiet = false } = {}) {
     try {
       setMonitoringError("");
@@ -2540,6 +2568,175 @@ export default function HomeFaxStandardFindingsSection() {
       urgency: "normal",
       notes: "",
     });
+  }
+
+  function yesNoFromChecked(checked) {
+    return checked ? "yes" : "no";
+  }
+
+  function checkedFromYesNo(value) {
+    return ["yes", "true", "1", "enabled", "active", "on"].includes(
+      String(value || "").trim().toLowerCase()
+    );
+  }
+
+  function updateNotificationPreferenceField(field, value) {
+    setNotificationPreferenceForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  async function loadNotificationPreferences({ quiet = false } = {}) {
+    const safeRecordId = String(recordId || "").trim();
+    const safeUserId = String(notificationPreferenceForm.user_id || "homeowner-smoke-test").trim();
+
+    if (!safeRecordId) {
+      setNotificationPreferencePayload(null);
+      return;
+    }
+
+    if (!quiet) {
+      setNotificationPreferenceLoading(true);
+    }
+
+    setNotificationPreferenceError("");
+    setNotificationPreferenceSuccess("");
+
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}/notification-preferences/${encodeURIComponent(safeRecordId)}?user_id=${encodeURIComponent(safeUserId)}`
+      );
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || data?.success === false) {
+        throw new Error(
+          data?.message ||
+            data?.error ||
+            data?.detail?.message ||
+            "Failed to load notification preferences."
+        );
+      }
+
+      const preferences = data?.preferences || {};
+
+      setNotificationPreferencePayload(data);
+      setNotificationPreferenceForm((current) => ({
+        ...current,
+        user_id: preferences.user_id || safeUserId,
+
+        in_app_enabled: preferences.in_app_enabled || "yes",
+        email_enabled: preferences.email_enabled || "no",
+        sms_enabled: preferences.sms_enabled || "no",
+        push_enabled: preferences.push_enabled || "no",
+
+        store_reminders_enabled: preferences.store_reminders_enabled || "yes",
+        maintenance_reminders_enabled: preferences.maintenance_reminders_enabled || "yes",
+        weather_alerts_enabled: preferences.weather_alerts_enabled || "yes",
+        device_alerts_enabled: preferences.device_alerts_enabled || "yes",
+
+        quiet_hours_enabled: preferences.quiet_hours_enabled || "no",
+        quiet_hours_start: preferences.quiet_hours_start || "21:00",
+        quiet_hours_end: preferences.quiet_hours_end || "08:00",
+        timezone: preferences.timezone || "America/Chicago",
+
+        email_recipient: preferences.email_recipient || "",
+        sms_recipient: preferences.sms_recipient || "",
+        notes: preferences.notes || "",
+      }));
+    } catch (err) {
+      console.error("Failed to load notification preferences", err);
+      setNotificationPreferencePayload(null);
+      setNotificationPreferenceError(err?.message || "Failed to load notification preferences.");
+    } finally {
+      if (!quiet) {
+        setNotificationPreferenceLoading(false);
+      }
+    }
+  }
+
+  async function saveNotificationPreferences() {
+    const safeRecordId = String(recordId || "").trim();
+
+    if (!safeRecordId) {
+      setNotificationPreferenceError("Missing record id.");
+      return;
+    }
+
+    setNotificationPreferenceSaving(true);
+    setNotificationPreferenceError("");
+    setNotificationPreferenceSuccess("");
+
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}/notification-preferences/${encodeURIComponent(safeRecordId)}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            tenant_id: "lateef-home-inspection",
+            property_id: "",
+
+            user_id: notificationPreferenceForm.user_id || "homeowner-smoke-test",
+
+            in_app_enabled: notificationPreferenceForm.in_app_enabled,
+            email_enabled: notificationPreferenceForm.email_enabled,
+            sms_enabled: notificationPreferenceForm.sms_enabled,
+            push_enabled: notificationPreferenceForm.push_enabled,
+
+            store_reminders_enabled: notificationPreferenceForm.store_reminders_enabled,
+            maintenance_reminders_enabled: notificationPreferenceForm.maintenance_reminders_enabled,
+            weather_alerts_enabled: notificationPreferenceForm.weather_alerts_enabled,
+            device_alerts_enabled: notificationPreferenceForm.device_alerts_enabled,
+
+            quiet_hours_enabled: notificationPreferenceForm.quiet_hours_enabled,
+            quiet_hours_start: notificationPreferenceForm.quiet_hours_start,
+            quiet_hours_end: notificationPreferenceForm.quiet_hours_end,
+            timezone: notificationPreferenceForm.timezone,
+
+            email_recipient: notificationPreferenceForm.email_recipient,
+            sms_recipient: notificationPreferenceForm.sms_recipient,
+
+            updated_by: notificationPreferenceForm.user_id || "homeowner-smoke-test",
+            notes:
+              notificationPreferenceForm.notes ||
+              "Saved from Dashboard Notification Preferences UI Pass 1.",
+          }),
+        }
+      );
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || data?.success === false) {
+        throw new Error(
+          data?.message ||
+            data?.error ||
+            data?.detail?.message ||
+            "Failed to save notification preferences."
+        );
+      }
+
+      const preferences = data?.preferences || {};
+
+      setNotificationPreferencePayload({
+        success: true,
+        exists: true,
+        record_id: safeRecordId,
+        user_id: preferences.user_id || notificationPreferenceForm.user_id,
+        preferences,
+      });
+
+      setNotificationPreferenceSuccess("Notification preferences saved.");
+      await loadNotificationPreferences({ quiet: true });
+    } catch (err) {
+      console.error("Failed to save notification preferences", err);
+      setNotificationPreferenceError(err?.message || "Failed to save notification preferences.");
+    } finally {
+      setNotificationPreferenceSaving(false);
+    }
   }
 
   async function loadStoreReminderNotifications({ quiet = false } = {}) {
@@ -3240,6 +3437,7 @@ export default function HomeFaxStandardFindingsSection() {
       await loadLocationPermission();
       await loadHomeCareShoppingItems();
       await loadStoreReminderNotifications();
+      await loadNotificationPreferences();
     }
 
     load();
@@ -3258,6 +3456,7 @@ export default function HomeFaxStandardFindingsSection() {
       loadLocationPermission({ quiet: true });
       loadHomeCareShoppingItems({ quiet: true });
       loadStoreReminderNotifications({ quiet: true });
+      loadNotificationPreferences({ quiet: true });
     }
 
     window.addEventListener("homefax:refresh-standard-findings", handleExternalMonitoringRefresh);
@@ -5213,6 +5412,269 @@ export default function HomeFaxStandardFindingsSection() {
               No HomeFax notifications yet.
             </div>
           )}
+        </div>
+
+        <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div className="text-xs font-black uppercase tracking-[0.2em] text-slate-700">
+                Notification Preferences
+              </div>
+
+              <div className="mt-1 text-lg font-black text-slate-950">
+                Choose How HomeFax Contacts You
+              </div>
+
+              <div className="mt-2 text-sm leading-6 text-slate-600">
+                Control notification channels, alert types, quiet hours, and delivery recipients.
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => loadNotificationPreferences({ quiet: false })}
+              className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-800 shadow-sm hover:bg-slate-50"
+            >
+              Refresh Preferences
+            </button>
+          </div>
+
+          {notificationPreferenceLoading ? (
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-700">
+              Loading notification preferences...
+            </div>
+          ) : null}
+
+          {notificationPreferenceError ? (
+            <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">
+              {notificationPreferenceError}
+            </div>
+          ) : null}
+
+          {notificationPreferenceSuccess ? (
+            <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-800">
+              {notificationPreferenceSuccess}
+            </div>
+          ) : null}
+
+          <div className="mt-5 grid gap-4 lg:grid-cols-2">
+            <div className="rounded-3xl bg-slate-50 p-5">
+              <div className="text-sm font-black text-slate-950">
+                Notification Channels
+              </div>
+
+              <div className="mt-4 grid gap-3">
+                {[
+                  ["in_app_enabled", "In-App", "Show notifications in the HomeFax dashboard."],
+                  ["email_enabled", "Email", "Send HomeFax notifications by email."],
+                  ["sms_enabled", "SMS", "Send HomeFax notifications by text message."],
+                  ["push_enabled", "Push", "Reserved for future mobile push notifications."],
+                ].map(([field, label, description]) => (
+                  <label
+                    key={field}
+                    className="flex cursor-pointer items-start gap-3 rounded-2xl bg-white p-4"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checkedFromYesNo(notificationPreferenceForm[field])}
+                      onChange={(event) =>
+                        updateNotificationPreferenceField(field, yesNoFromChecked(event.target.checked))
+                      }
+                      className="mt-1 h-4 w-4"
+                    />
+                    <span>
+                      <span className="block text-sm font-black text-slate-900">
+                        {label}
+                      </span>
+                      <span className="block text-xs leading-5 text-slate-600">
+                        {description}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-3xl bg-slate-50 p-5">
+              <div className="text-sm font-black text-slate-950">
+                Alert Types
+              </div>
+
+              <div className="mt-4 grid gap-3">
+                {[
+                  ["store_reminders_enabled", "Store Reminders", "Nearby store reminders and shopping-list alerts."],
+                  ["maintenance_reminders_enabled", "Maintenance Reminders", "Recurring home-care task reminders."],
+                  ["weather_alerts_enabled", "Weather Alerts", "Weather-driven home risk alerts."],
+                  ["device_alerts_enabled", "Device Alerts", "Connected-device monitoring alerts."],
+                ].map(([field, label, description]) => (
+                  <label
+                    key={field}
+                    className="flex cursor-pointer items-start gap-3 rounded-2xl bg-white p-4"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checkedFromYesNo(notificationPreferenceForm[field])}
+                      onChange={(event) =>
+                        updateNotificationPreferenceField(field, yesNoFromChecked(event.target.checked))
+                      }
+                      className="mt-1 h-4 w-4"
+                    />
+                    <span>
+                      <span className="block text-sm font-black text-slate-900">
+                        {label}
+                      </span>
+                      <span className="block text-xs leading-5 text-slate-600">
+                        {description}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+            <div className="rounded-3xl bg-slate-50 p-5">
+              <div className="text-sm font-black text-slate-950">
+                Quiet Hours
+              </div>
+
+              <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-2xl bg-white p-4">
+                <input
+                  type="checkbox"
+                  checked={checkedFromYesNo(notificationPreferenceForm.quiet_hours_enabled)}
+                  onChange={(event) =>
+                    updateNotificationPreferenceField(
+                      "quiet_hours_enabled",
+                      yesNoFromChecked(event.target.checked)
+                    )
+                  }
+                  className="mt-1 h-4 w-4"
+                />
+                <span>
+                  <span className="block text-sm font-black text-slate-900">
+                    Enable Quiet Hours
+                  </span>
+                  <span className="block text-xs leading-5 text-slate-600">
+                    HomeFax will block non-forced sends during this window.
+                  </span>
+                </span>
+              </label>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <label className="block">
+                  <span className="text-xs font-black uppercase tracking-wide text-slate-600">
+                    Start
+                  </span>
+                  <input
+                    type="time"
+                    value={notificationPreferenceForm.quiet_hours_start || "21:00"}
+                    onChange={(event) =>
+                      updateNotificationPreferenceField("quiet_hours_start", event.target.value)
+                    }
+                    className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-900"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="text-xs font-black uppercase tracking-wide text-slate-600">
+                    End
+                  </span>
+                  <input
+                    type="time"
+                    value={notificationPreferenceForm.quiet_hours_end || "08:00"}
+                    onChange={(event) =>
+                      updateNotificationPreferenceField("quiet_hours_end", event.target.value)
+                    }
+                    className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-900"
+                  />
+                </label>
+              </div>
+
+              <label className="mt-3 block">
+                <span className="text-xs font-black uppercase tracking-wide text-slate-600">
+                  Timezone
+                </span>
+                <input
+                  type="text"
+                  value={notificationPreferenceForm.timezone || "America/Chicago"}
+                  onChange={(event) =>
+                    updateNotificationPreferenceField("timezone", event.target.value)
+                  }
+                  className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-900"
+                />
+              </label>
+            </div>
+
+            <div className="rounded-3xl bg-slate-50 p-5">
+              <div className="text-sm font-black text-slate-950">
+                Delivery Recipients
+              </div>
+
+              <label className="mt-4 block">
+                <span className="text-xs font-black uppercase tracking-wide text-slate-600">
+                  Email Recipient
+                </span>
+                <input
+                  type="email"
+                  value={notificationPreferenceForm.email_recipient || ""}
+                  onChange={(event) =>
+                    updateNotificationPreferenceField("email_recipient", event.target.value)
+                  }
+                  placeholder="homeowner@example.com"
+                  className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-900"
+                />
+              </label>
+
+              <label className="mt-3 block">
+                <span className="text-xs font-black uppercase tracking-wide text-slate-600">
+                  SMS Recipient
+                </span>
+                <input
+                  type="tel"
+                  value={notificationPreferenceForm.sms_recipient || ""}
+                  onChange={(event) =>
+                    updateNotificationPreferenceField("sms_recipient", event.target.value)
+                  }
+                  placeholder="+15555550123"
+                  className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-900"
+                />
+              </label>
+
+              <label className="mt-3 block">
+                <span className="text-xs font-black uppercase tracking-wide text-slate-600">
+                  Notes
+                </span>
+                <textarea
+                  value={notificationPreferenceForm.notes || ""}
+                  onChange={(event) =>
+                    updateNotificationPreferenceField("notes", event.target.value)
+                  }
+                  rows={3}
+                  className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900"
+                  placeholder="Optional preference note"
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-xs leading-5 text-slate-500">
+              Current preference record:{" "}
+              <span className="font-black text-slate-700">
+                {notificationPreferencePayload?.exists ? "saved" : "default / not saved yet"}
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={saveNotificationPreferences}
+              disabled={notificationPreferenceSaving}
+              className="rounded-full bg-slate-900 px-5 py-3 text-sm font-black text-white shadow-sm hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {notificationPreferenceSaving ? "Saving Preferences..." : "Save Notification Preferences"}
+            </button>
+          </div>
         </div>
 
         <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
