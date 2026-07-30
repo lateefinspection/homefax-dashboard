@@ -2307,6 +2307,7 @@ export default function HomeFaxStandardFindingsSection() {
   const [storeNotificationPayload, setStoreNotificationPayload] = useState(null);
   const [storeNotificationLoading, setStoreNotificationLoading] = useState(false);
   const [storeNotificationError, setStoreNotificationError] = useState("");
+  const [showAdminNotificationDebug, setShowAdminNotificationDebug] = useState(false);
 
   async function loadMonitoringLifecycle({ quiet = false } = {}) {
     try {
@@ -5041,6 +5042,39 @@ export default function HomeFaxStandardFindingsSection() {
         </div>
 
         <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <div className="text-xs font-black uppercase tracking-[0.2em] text-slate-700">
+                Admin Tools
+              </div>
+              <div className="mt-1 text-lg font-black text-slate-950">
+                Notification Debug Controls
+              </div>
+              <div className="mt-2 text-sm leading-6 text-slate-600">
+                Admin-only tools for checking store reminder notification queue state,
+                delivery status, provider ids, and message body output.
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setShowAdminNotificationDebug((current) => !current);
+                loadStoreReminderNotifications({ quiet: true });
+              }}
+              className={
+                showAdminNotificationDebug
+                  ? "rounded-full bg-slate-900 px-5 py-3 text-sm font-black text-white shadow-sm hover:bg-slate-800"
+                  : "rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-800 shadow-sm hover:bg-slate-50"
+              }
+            >
+              {showAdminNotificationDebug ? "Hide Notification Debug" : "Show Notification Debug"}
+            </button>
+          </div>
+        </div>
+
+        {showAdminNotificationDebug ? (
+        <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <div className="text-xs font-black uppercase tracking-[0.2em] text-slate-700">
@@ -5232,6 +5266,7 @@ export default function HomeFaxStandardFindingsSection() {
             </div>
           )}
         </div>
+        ) : null}
 
         {storeReminderEvents.length ? (
           <div className="mt-5 grid gap-4 lg:grid-cols-2">
