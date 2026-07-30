@@ -3682,6 +3682,23 @@ export default function HomeFaxStandardFindingsSection() {
     storeReminderNotifications.length ||
     0;
 
+  const homeownerNotifications = storeReminderNotifications.filter((notification) => {
+    const type = String(notification.notification_type || "").trim().toLowerCase();
+    return type === "store_reminder" || !type;
+  });
+
+  const homeownerNotificationCount = homeownerNotifications.length;
+
+  const homeownerActiveNotificationCount = homeownerNotifications.filter((notification) => {
+    const status = String(notification.notification_status || "").trim().toLowerCase();
+    return status === "queued" || status === "sent" || !status;
+  }).length;
+
+  const homeownerStoreReminderNotificationCount = homeownerNotifications.filter((notification) => {
+    const type = String(notification.notification_type || "").trim().toLowerCase();
+    return type === "store_reminder" || !type;
+  }).length;
+
   const monitoringEvents = monitoringEventsPayload?.events || [];
 
   const latestMonitoringEvents = useMemo(() => {
@@ -5037,6 +5054,163 @@ export default function HomeFaxStandardFindingsSection() {
           ) : (
             <div className="mt-5 rounded-2xl border border-dashed border-purple-200 bg-white/80 p-5 text-sm font-semibold text-slate-600">
               No shopping items yet. Add supplies like bleach, garbage bags, batteries, caulk, filters, or leak sensors.
+            </div>
+          )}
+        </div>
+
+        <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div className="text-xs font-black uppercase tracking-[0.2em] text-slate-700">
+                HomeFax Notification Center
+              </div>
+
+              <div className="mt-1 text-lg font-black text-slate-950">
+                Your HomeFax Notifications
+              </div>
+
+              <div className="mt-2 text-sm leading-6 text-slate-600">
+                Simple homeowner-ready reminders from HomeFax. Technical delivery details stay
+                in the Admin Notification Debug panel.
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => loadStoreReminderNotifications({ quiet: false })}
+              className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-800 shadow-sm hover:bg-slate-50"
+            >
+              Refresh Notifications
+            </button>
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-2xl bg-slate-50 p-4">
+              <div className="text-[11px] font-black uppercase tracking-wide text-slate-600">
+                Notifications
+              </div>
+              <div className="mt-1 text-2xl font-black text-slate-950">
+                {homeownerNotificationCount}
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-emerald-50 p-4">
+              <div className="text-[11px] font-black uppercase tracking-wide text-emerald-700">
+                Active
+              </div>
+              <div className="mt-1 text-2xl font-black text-emerald-800">
+                {homeownerActiveNotificationCount}
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-blue-50 p-4">
+              <div className="text-[11px] font-black uppercase tracking-wide text-blue-700">
+                Store Reminders
+              </div>
+              <div className="mt-1 text-2xl font-black text-blue-800">
+                {homeownerStoreReminderNotificationCount}
+              </div>
+            </div>
+          </div>
+
+          {storeNotificationLoading ? (
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-700">
+              Loading HomeFax notifications...
+            </div>
+          ) : null}
+
+          {storeNotificationError ? (
+            <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">
+              {storeNotificationError}
+            </div>
+          ) : null}
+
+          {homeownerNotifications.length ? (
+            <div className="mt-5 grid gap-4">
+              {homeownerNotifications.map((notification) => {
+                const notificationStatus = String(notification.notification_status || "queued")
+                  .trim()
+                  .toLowerCase();
+
+                const friendlyStatus =
+                  notificationStatus === "sent"
+                    ? "Delivered"
+                    : notificationStatus === "failed"
+                      ? "Delivery Issue"
+                      : "Ready";
+
+                const friendlyStatusClass =
+                  notificationStatus === "sent"
+                    ? "rounded-full bg-emerald-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-emerald-800"
+                    : notificationStatus === "failed"
+                      ? "rounded-full bg-amber-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-amber-800"
+                      : "rounded-full bg-blue-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-blue-800";
+
+                return (
+                  <div
+                    key={`homeowner-notification-${notification.id}`}
+                    className="rounded-3xl border border-slate-100 bg-slate-50 p-5"
+                  >
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div>
+                        <div className="text-xs font-black uppercase tracking-wide text-slate-600">
+                          Store Reminder
+                        </div>
+
+                        <div className="mt-1 text-base font-black text-slate-950">
+                          {notification.title || "HomeFax reminder"}
+                        </div>
+                      </div>
+
+                      <span className={friendlyStatusClass}>
+                        {friendlyStatus}
+                      </span>
+                    </div>
+
+                    {notification.body ? (
+                      <div className="mt-4 rounded-2xl bg-white p-4 text-sm leading-6 text-slate-700">
+                        {String(notification.body)
+                          .split("\n")
+                          .filter((line) => line.trim())
+                          .slice(0, 6)
+                          .map((line, index) => (
+                            <div key={`homeowner-notification-${notification.id}-line-${index}`}>
+                              {line}
+                            </div>
+                          ))}
+                      </div>
+                    ) : null}
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {notification.action_url ? (
+                        <a
+                          href={notification.action_url}
+                          className="rounded-full bg-slate-900 px-4 py-2 text-xs font-black text-white shadow-sm hover:bg-slate-800"
+                        >
+                          Open Reminder
+                        </a>
+                      ) : null}
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const reminderSection = document.querySelector("[data-homefax-store-reminders]");
+                          if (reminderSection) {
+                            reminderSection.scrollIntoView({ behavior: "smooth", block: "start" });
+                          }
+                        }}
+                        className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-800 shadow-sm hover:bg-slate-50"
+                      >
+                        View Store Reminders
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="mt-5 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-5 text-sm font-semibold text-slate-600">
+              No HomeFax notifications yet.
             </div>
           )}
         </div>
