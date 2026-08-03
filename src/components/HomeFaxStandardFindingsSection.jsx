@@ -2276,6 +2276,8 @@ export default function HomeFaxStandardFindingsSection() {
   const [storeReminderLoading, setStoreReminderLoading] = useState(false);
   const [storeReminderError, setStoreReminderError] = useState("");
   const [storeReminderActionBusyId, setStoreReminderActionBusyId] = useState(null);
+  const [homeownerNotificationActionBusyId, setHomeownerNotificationActionBusyId] = useState("");
+  const [homeownerNotificationActionError, setHomeownerNotificationActionError] = useState("");
   const [locationPermissionPayload, setLocationPermissionPayload] = useState(null);
   const [locationPermissionLoading, setLocationPermissionLoading] = useState(false);
   const [locationPermissionError, setLocationPermissionError] = useState("");
@@ -2681,11 +2683,106 @@ export default function HomeFaxStandardFindingsSection() {
     return `Stored recipient: ${recipient}`;
   }
 
+  function isHomeownerNotificationRead(notification) {
+    return String(notification?.homeowner_read_status || "").trim().toLowerCase() === "read";
+  }
+
+  function isHomeownerNotificationArchived(notification) {
+    return String(notification?.homeowner_archived || "").trim().toLowerCase() === "yes";
+  }
+
+  function getHomeownerNotificationReadLabel(notification) {
+    return isHomeownerNotificationRead(notification) ? "Read" : "Unread";
+  }
+
+  function getHomeownerNotificationArchiveLabel(notification) {
+    return isHomeownerNotificationArchived(notification) ? "Archived" : "Active";
+  }
+
+  function getHomeownerNotificationReadClass(notification) {
+    if (isHomeownerNotificationRead(notification)) {
+      return "rounded-full bg-slate-100 px-3 py-1 text-[11px] font-black uppercase tracking-wide text-slate-700";
+    }
+
+    return "rounded-full bg-amber-100 px-3 py-1 text-[11px] font-black uppercase tracking-wide text-amber-800";
+  }
+
+  function getHomeownerNotificationArchiveClass(notification) {
+    if (isHomeownerNotificationArchived(notification)) {
+      return "rounded-full bg-purple-100 px-3 py-1 text-[11px] font-black uppercase tracking-wide text-purple-800";
+    }
+
+    return "rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-black uppercase tracking-wide text-emerald-800";
+  }
+
   function updateNotificationPreferenceField(field, value) {
     setNotificationPreferenceForm((current) => ({
       ...current,
       [field]: value,
     }));
+  }
+
+  async function handleHomeownerNotificationAction(notification, action) {
+    const notificationId = notification?.id;
+
+    if (!notificationId) {
+      return;
+    }
+
+    const safeAction = String(action || "").trim().toLowerCase();
+
+    const endpointByAction = {
+      mark_read: "mark-read",
+      archive: "archive",
+      unarchive: "unarchive",
+    };
+
+    const endpointAction = endpointByAction[safeAction];
+
+    if (!endpointAction) {
+      return;
+    }
+
+    setHomeownerNotificationActionBusyId(`${notificationId}-${safeAction}`);
+    setHomeownerNotificationActionError("");
+
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}/store-reminder-notification/${notificationId}/${endpointAction}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            user_id: "homeowner-smoke-test",
+            action_note:
+              safeAction === "mark_read"
+                ? "Homeowner marked notification read from dashboard."
+                : safeAction === "archive"
+                  ? "Homeowner archived notification from dashboard."
+                  : "Homeowner unarchived notification from dashboard.",
+          }),
+        }
+      );
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || data?.success === false) {
+        throw new Error(
+          data?.detail?.message ||
+            data?.detail?.error ||
+            data?.message ||
+            "Notification action failed."
+        );
+      }
+
+      await loadStoreReminderNotifications({ quiet: true });
+    } catch (error) {
+      setHomeownerNotificationActionError(error?.message || "Notification action failed.");
+    } finally {
+      setHomeownerNotificationActionBusyId("");
+    }
   }
 
   async function loadNotificationPreferences({ quiet = false } = {}) {
@@ -3984,8 +4081,17 @@ export default function HomeFaxStandardFindingsSection() {
 
   const homeownerNotifications = storeReminderNotifications.filter((notification) => {
     const type = String(notification.notification_type || "").trim().toLowerCase();
-    return type === "store_reminder" || !type;
+    const archived = String(notification.homeowner_archived || "").trim().toLowerCase() === "yes";
+
+    return (type === "store_reminder" || !type) && !archived;
   });
+
+  const homeownerArchivedNotificationCount = storeReminderNotifications.filter((notification) => {
+    const type = String(notification.notification_type || "").trim().toLowerCase();
+    const archived = String(notification.homeowner_archived || "").trim().toLowerCase() === "yes";
+
+    return (type === "store_reminder" || !type) && archived;
+  }).length;
 
   const homeownerNotificationCount = homeownerNotifications.length;
 
@@ -5422,6 +5528,12 @@ export default function HomeFaxStandardFindingsSection() {
           {storeNotificationError ? (
             <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">
               {storeNotificationError}
+            </div>
+          ) : null}
+
+          {homeownerNotificationActionError ? (
+            <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">
+              {homeownerNotificationActionError}
             </div>
           ) : null}
 
