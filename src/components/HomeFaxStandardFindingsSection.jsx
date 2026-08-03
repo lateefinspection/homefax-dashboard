@@ -2582,6 +2582,61 @@ export default function HomeFaxStandardFindingsSection() {
     );
   }
 
+  function getNotificationPreferenceSaveReadiness(form) {
+    const emailEnabled = checkedFromYesNo(form?.email_enabled);
+    const smsEnabled = checkedFromYesNo(form?.sms_enabled);
+    const quietHoursEnabled = checkedFromYesNo(form?.quiet_hours_enabled);
+
+    const emailRecipient = String(form?.email_recipient || "").trim();
+    const smsRecipient = String(form?.sms_recipient || "").trim();
+    const quietHoursStart = String(form?.quiet_hours_start || "").trim();
+    const quietHoursEnd = String(form?.quiet_hours_end || "").trim();
+    const timezone = String(form?.timezone || "").trim();
+
+    const warnings = [];
+
+    if (emailEnabled && !emailRecipient) {
+      warnings.push("Email is enabled, but no email recipient is saved.");
+    }
+
+    if (smsEnabled && !smsRecipient) {
+      warnings.push("SMS is enabled, but no SMS recipient is saved.");
+    }
+
+    if (smsEnabled && smsRecipient && !smsRecipient.startsWith("+")) {
+      warnings.push("SMS should use E.164 format, such as +1XXXXXXXXXX.");
+    }
+
+    if (quietHoursEnabled && (!quietHoursStart || !quietHoursEnd || !timezone)) {
+      warnings.push("Quiet hours are enabled, but start, end, or timezone is missing.");
+    }
+
+    return {
+      ready: warnings.length === 0,
+      warnings,
+    };
+  }
+
+  function getNotificationPreferenceSaveLabel(form) {
+    const readiness = getNotificationPreferenceSaveReadiness(form);
+
+    if (readiness.ready) {
+      return "Ready to save";
+    }
+
+    return "Review needed";
+  }
+
+  function getNotificationPreferenceSaveClass(form) {
+    const readiness = getNotificationPreferenceSaveReadiness(form);
+
+    if (readiness.ready) {
+      return "rounded-full bg-emerald-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-emerald-800";
+    }
+
+    return "rounded-full bg-amber-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-amber-800";
+  }
+
   function formatNotificationStatus(status) {
     const normalized = String(status || "").trim().toLowerCase();
 
@@ -5681,6 +5736,16 @@ export default function HomeFaxStandardFindingsSection() {
               <div className="mt-2 text-sm leading-6 text-slate-600">
                 Control notification channels, alert types, quiet hours, and delivery recipients.
               </div>
+
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className={getNotificationPreferenceSaveClass(notificationPreferenceForm)}>
+                  {getNotificationPreferenceSaveLabel(notificationPreferenceForm)}
+                </span>
+
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-slate-700">
+                  Homeowner controlled
+                </span>
+              </div>
             </div>
 
             <button
@@ -5721,7 +5786,11 @@ export default function HomeFaxStandardFindingsSection() {
                   ["in_app_enabled", "In-App", "Show notifications in the HomeFax dashboard."],
                   ["email_enabled", "Email", "Send HomeFax notifications by email."],
                   ["sms_enabled", "SMS", "Send HomeFax notifications by text message."],
-                  ["push_enabled", "Push", "Reserved for future mobile push notifications."],
+                  [
+                    "push_enabled",
+                    "Push",
+                    "Reserved for future mobile push notifications. Push is visible here for product planning, but provider sending is not configured in this pass.",
+                  ],
                 ].map(([field, label, description]) => (
                   <label
                     key={field}
@@ -5809,7 +5878,7 @@ export default function HomeFaxStandardFindingsSection() {
                     Enable Quiet Hours
                   </span>
                   <span className="block text-xs leading-5 text-slate-600">
-                    HomeFax will block non-forced sends during this window.
+                    HomeFax will block non-forced sends during this window. Admin force-send can bypass quiet hours, but it does not bypass disabled channels or disabled alert types.
                   </span>
                 </span>
               </label>
@@ -5910,6 +5979,23 @@ export default function HomeFaxStandardFindingsSection() {
               </label>
             </div>
           </div>
+
+          {getNotificationPreferenceSaveReadiness(notificationPreferenceForm).warnings.length ? (
+            <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+              <div className="text-xs font-black uppercase tracking-wide text-amber-800">
+                Preference Review Needed
+              </div>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm font-semibold text-amber-900">
+                {getNotificationPreferenceSaveReadiness(notificationPreferenceForm).warnings.map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-900">
+              Preferences are ready to save. Provider delivery can still fail if the email or SMS provider account has a quota, billing, or credential issue.
+            </div>
+          )}
 
           <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-xs leading-5 text-slate-500">
