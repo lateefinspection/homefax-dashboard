@@ -5593,6 +5593,22 @@ export default function HomeFaxStandardFindingsSection() {
                       </div>
                     ) : null}
 
+                    <div className="mt-4 flex flex-wrap items-center gap-2">
+                      <span className={getHomeownerNotificationReadClass(notification)}>
+                        {getHomeownerNotificationReadLabel(notification)}
+                      </span>
+
+                      <span className={getHomeownerNotificationArchiveClass(notification)}>
+                        {getHomeownerNotificationArchiveLabel(notification)}
+                      </span>
+                    </div>
+
+                    {notification.homeowner_read_at ? (
+                      <div className="mt-2 text-xs font-semibold text-slate-500">
+                        Read at: {notification.homeowner_read_at}
+                      </div>
+                    ) : null}
+
                     <div className="mt-4 flex flex-wrap gap-2">
                       {notification.action_url ? (
                         <a
@@ -5614,6 +5630,30 @@ export default function HomeFaxStandardFindingsSection() {
                         className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-800 shadow-sm hover:bg-slate-50"
                       >
                         View Store Reminders
+                      </button>
+
+                      {!isHomeownerNotificationRead(notification) ? (
+                        <button
+                          type="button"
+                          disabled={homeownerNotificationActionBusyId === `${notification.id}-mark_read`}
+                          onClick={() => handleHomeownerNotificationAction(notification, "mark_read")}
+                          className="rounded-full border border-amber-200 bg-amber-50 px-4 py-2 text-xs font-black text-amber-800 shadow-sm hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {homeownerNotificationActionBusyId === `${notification.id}-mark_read`
+                            ? "Marking..."
+                            : "Mark Read"}
+                        </button>
+                      ) : null}
+
+                      <button
+                        type="button"
+                        disabled={homeownerNotificationActionBusyId === `${notification.id}-archive`}
+                        onClick={() => handleHomeownerNotificationAction(notification, "archive")}
+                        className="rounded-full border border-purple-200 bg-purple-50 px-4 py-2 text-xs font-black text-purple-800 shadow-sm hover:bg-purple-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {homeownerNotificationActionBusyId === `${notification.id}-archive`
+                          ? "Archiving..."
+                          : "Archive"}
                       </button>
                     </div>
                   </div>
