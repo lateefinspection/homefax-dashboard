@@ -2580,6 +2580,107 @@ export default function HomeFaxStandardFindingsSection() {
     );
   }
 
+  function formatNotificationStatus(status) {
+    const normalized = String(status || "").trim().toLowerCase();
+
+    if (normalized === "sent") return "SENT";
+    if (normalized === "failed") return "FAILED";
+    if (normalized === "queued") return "QUEUED";
+    if (normalized === "blocked") return "BLOCKED";
+
+    return normalized ? normalized.toUpperCase() : "UNKNOWN";
+  }
+
+  function getNotificationStatusClass(status) {
+    const normalized = String(status || "").trim().toLowerCase();
+
+    if (normalized === "sent") {
+      return "rounded-full bg-emerald-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-emerald-800";
+    }
+
+    if (normalized === "failed") {
+      return "rounded-full bg-red-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-red-800";
+    }
+
+    if (normalized === "queued") {
+      return "rounded-full bg-blue-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-blue-800";
+    }
+
+    return "rounded-full bg-slate-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-slate-700";
+  }
+
+  function getNotificationProviderLabel(notification) {
+    const channel = String(notification?.channel || "").trim().toLowerCase();
+
+    if (channel === "sms") return "Twilio";
+    if (channel === "email") return "SendGrid";
+    if (channel === "in_app") return "HomeFax In-App";
+
+    return channel ? channel.toUpperCase() : "Unknown";
+  }
+
+  function parseNotificationErrorMessage(errorMessage) {
+    const raw = String(errorMessage || "").trim();
+
+    if (!raw) {
+      return "";
+    }
+
+    try {
+      const parsed = JSON.parse(raw);
+      const firstError = Array.isArray(parsed?.errors) ? parsed.errors[0] : null;
+
+      if (firstError?.message) {
+        return firstError.message;
+      }
+
+      if (parsed?.message) {
+        return parsed.message;
+      }
+
+      if (parsed?.error) {
+        return parsed.error;
+      }
+    } catch (error) {
+      // Keep raw string if it is not JSON.
+    }
+
+    return raw;
+  }
+
+  function getNotificationDeliverySummary(notification) {
+    const status = String(notification?.notification_status || "").trim().toLowerCase();
+    const provider = getNotificationProviderLabel(notification);
+    const providerMessageId = String(notification?.provider_message_id || "").trim();
+    const error = parseNotificationErrorMessage(notification?.error_message);
+
+    if (status === "sent") {
+      return providerMessageId
+        ? `${provider} accepted this notification.`
+        : `${provider} marked this notification sent.`;
+    }
+
+    if (status === "failed") {
+      return error ? `${provider} failed: ${error}` : `${provider} delivery failed.`;
+    }
+
+    if (status === "queued") {
+      return `Waiting to send through ${provider}.`;
+    }
+
+    return `Current delivery status: ${formatNotificationStatus(status)}.`;
+  }
+
+  function getNotificationRecipientSyncLabel(notification) {
+    const recipient = String(notification?.recipient || "").trim();
+
+    if (!recipient) {
+      return "No recipient stored";
+    }
+
+    return `Stored recipient: ${recipient}`;
+  }
+
   function updateNotificationPreferenceField(field, value) {
     setNotificationPreferenceForm((current) => ({
       ...current,
@@ -5810,81 +5911,150 @@ export default function HomeFaxStandardFindingsSection() {
                       </div>
                     </div>
 
-                    <span
-                      className={
-                        notification.notification_status === "sent"
-                          ? "rounded-full bg-emerald-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-emerald-800"
-                          : notification.notification_status === "failed"
-                            ? "rounded-full bg-red-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-red-800"
-                            : "rounded-full bg-blue-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-blue-800"
-                      }
-                    >
-                      {notification.notification_status || "queued"}
+                    <span className={getNotificationStatusClass(notification.notification_status)}>
+                      {formatNotificationStatus(notification.notification_status)}
                     </span>
                   </div>
 
-                  <div className="mt-4 grid gap-3 text-xs font-semibold text-slate-600 sm:grid-cols-2 lg:grid-cols-3">
-                    <div>
-                      <span className="font-black text-slate-800">Alert Event:</span>{" "}
-                      #{notification.location_alert_event_id || "none"}
+                  <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <div className="text-[11px] font-black uppercase tracking-wide text-slate-500">
+                          Delivery Summary
+                        </div>
+                        <div className="mt-1 text-sm font-black text-slate-900">
+                          {getNotificationDeliverySummary(notification)}
+                        </div>
+                      </div>
+
+                      <span className={getNotificationStatusClass(notification.notification_status)}>
+                        {formatNotificationStatus(notification.notification_status)}
+                      </span>
                     </div>
 
-                    <div>
-                      <span className="font-black text-slate-800">Channel:</span>{" "}
-                      {notification.channel || "in_app"}
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      <div className="rounded-2xl bg-slate-50 p-3">
+                        <div className="text-[10px] font-black uppercase tracking-wide text-slate-500">
+                          Alert Event
+                        </div>
+                        <div className="mt-1 text-xs font-black text-slate-900">
+                          #{notification.location_alert_event_id || "none"}
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl bg-slate-50 p-3">
+                        <div className="text-[10px] font-black uppercase tracking-wide text-slate-500">
+                          Provider
+                        </div>
+                        <div className="mt-1 text-xs font-black text-slate-900">
+                          {getNotificationProviderLabel(notification)}
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl bg-slate-50 p-3">
+                        <div className="text-[10px] font-black uppercase tracking-wide text-slate-500">
+                          Channel
+                        </div>
+                        <div className="mt-1 text-xs font-black text-slate-900">
+                          {String(notification.channel || "in_app").toUpperCase()}
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl bg-slate-50 p-3">
+                        <div className="text-[10px] font-black uppercase tracking-wide text-slate-500">
+                          Recipient Sync
+                        </div>
+                        <div className="mt-1 break-words text-xs font-black text-slate-900">
+                          {getNotificationRecipientSyncLabel(notification)}
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl bg-slate-50 p-3">
+                        <div className="text-[10px] font-black uppercase tracking-wide text-slate-500">
+                          Type
+                        </div>
+                        <div className="mt-1 text-xs font-black text-slate-900">
+                          {notification.notification_type || "store_reminder"}
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl bg-slate-50 p-3">
+                        <div className="text-[10px] font-black uppercase tracking-wide text-slate-500">
+                          Record
+                        </div>
+                        <div className="mt-1 break-words text-xs font-black text-slate-900">
+                          {notification.record_id || recordId}
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl bg-slate-50 p-3">
+                        <div className="text-[10px] font-black uppercase tracking-wide text-slate-500">
+                          Queued
+                        </div>
+                        <div className="mt-1 text-xs font-bold text-slate-900">
+                          {notification.queued_at || "not queued"}
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl bg-slate-50 p-3">
+                        <div className="text-[10px] font-black uppercase tracking-wide text-slate-500">
+                          Sent
+                        </div>
+                        <div className="mt-1 text-xs font-bold text-slate-900">
+                          {notification.sent_at || "not sent"}
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl bg-slate-50 p-3">
+                        <div className="text-[10px] font-black uppercase tracking-wide text-slate-500">
+                          Failed
+                        </div>
+                        <div className="mt-1 text-xs font-bold text-slate-900">
+                          {notification.failed_at || "not failed"}
+                        </div>
+                      </div>
                     </div>
 
-                    <div>
-                      <span className="font-black text-slate-800">Recipient:</span>{" "}
-                      {notification.recipient || "not set"}
-                    </div>
+                    {notification.provider_message_id ? (
+                      <div className="mt-3 rounded-2xl bg-emerald-50 p-3">
+                        <div className="text-[10px] font-black uppercase tracking-wide text-emerald-700">
+                          Provider Message ID
+                        </div>
+                        <div className="mt-1 break-all text-xs font-black text-emerald-900">
+                          {notification.provider_message_id}
+                        </div>
+                      </div>
+                    ) : null}
 
-                    <div>
-                      <span className="font-black text-slate-800">Queued:</span>{" "}
-                      {notification.queued_at || "not queued"}
-                    </div>
-
-                    <div>
-                      <span className="font-black text-slate-800">Sent:</span>{" "}
-                      {notification.sent_at || "not sent"}
-                    </div>
-
-                    <div>
-                      <span className="font-black text-slate-800">Failed:</span>{" "}
-                      {notification.failed_at || "not failed"}
-                    </div>
-
-                    <div>
-                      <span className="font-black text-slate-800">Provider ID:</span>{" "}
-                      {notification.provider_message_id || "none"}
-                    </div>
-
-                    <div>
-                      <span className="font-black text-slate-800">Type:</span>{" "}
-                      {notification.notification_type || "store_reminder"}
-                    </div>
-
-                    <div>
-                      <span className="font-black text-slate-800">Record:</span>{" "}
-                      {notification.record_id || recordId}
-                    </div>
+                    {notification.error_message ? (
+                      <div className="mt-3 rounded-2xl bg-red-50 p-3">
+                        <div className="text-[10px] font-black uppercase tracking-wide text-red-700">
+                          Provider / Enforcement Error
+                        </div>
+                        <div className="mt-1 text-xs font-black text-red-900">
+                          {parseNotificationErrorMessage(notification.error_message)}
+                        </div>
+                        <details className="mt-2">
+                          <summary className="cursor-pointer text-[11px] font-bold text-red-700">
+                            Show raw error
+                          </summary>
+                          <pre className="mt-2 overflow-auto whitespace-pre-wrap text-[11px] font-semibold text-red-900">
+                            {notification.error_message}
+                          </pre>
+                        </details>
+                      </div>
+                    ) : null}
                   </div>
 
                   {notification.body ? (
-                    <div className="mt-4 rounded-2xl bg-white p-4">
-                      <div className="text-xs font-black uppercase tracking-wide text-slate-700">
-                        Notification Body
-                      </div>
+                    <details className="mt-4 rounded-2xl bg-white p-4">
+                      <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-slate-700">
+                        Show Notification Body
+                      </summary>
                       <pre className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">
                         {notification.body}
                       </pre>
-                    </div>
-                  ) : null}
-
-                  {notification.error_message ? (
-                    <div className="mt-4 rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-700">
-                      {notification.error_message}
-                    </div>
+                    </details>
                   ) : null}
 
                   {notification.note ? (
