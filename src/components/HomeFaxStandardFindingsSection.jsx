@@ -2310,6 +2310,7 @@ export default function HomeFaxStandardFindingsSection() {
   const [storeNotificationLoading, setStoreNotificationLoading] = useState(false);
   const [storeNotificationError, setStoreNotificationError] = useState("");
   const [showAdminNotificationDebug, setShowAdminNotificationDebug] = useState(false);
+  const [showHomeownerArchivedNotifications, setShowHomeownerArchivedNotifications] = useState(false);
 
   const [notificationPreferencePayload, setNotificationPreferencePayload] = useState(null);
   const [notificationPreferenceLoading, setNotificationPreferenceLoading] = useState(false);
@@ -4141,12 +4142,14 @@ export default function HomeFaxStandardFindingsSection() {
     return (type === "store_reminder" || !type) && !archived;
   });
 
-  const homeownerArchivedNotificationCount = storeReminderNotifications.filter((notification) => {
+  const homeownerArchivedNotifications = storeReminderNotifications.filter((notification) => {
     const type = String(notification.notification_type || "").trim().toLowerCase();
     const archived = String(notification.homeowner_archived || "").trim().toLowerCase() === "yes";
 
     return (type === "store_reminder" || !type) && archived;
-  }).length;
+  });
+
+  const homeownerArchivedNotificationCount = homeownerArchivedNotifications.length;
 
   const homeownerNotificationCount = homeownerNotifications.length;
 
@@ -5592,6 +5595,29 @@ export default function HomeFaxStandardFindingsSection() {
             </div>
           ) : null}
 
+          {homeownerArchivedNotificationCount ? (
+            <div className="mt-5 rounded-2xl border border-purple-100 bg-purple-50 p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="text-xs font-black uppercase tracking-wide text-purple-700">
+                    Archived Notifications
+                  </div>
+                  <div className="mt-1 text-sm font-semibold text-purple-900">
+                    {homeownerArchivedNotificationCount} archived HomeFax notification{homeownerArchivedNotificationCount === 1 ? "" : "s"} hidden from your active inbox.
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowHomeownerArchivedNotifications((current) => !current)}
+                  className="rounded-full border border-purple-200 bg-white px-4 py-2 text-xs font-black text-purple-800 shadow-sm hover:bg-purple-100"
+                >
+                  {showHomeownerArchivedNotifications ? "Hide Archived" : "Show Archived"}
+                </button>
+              </div>
+            </div>
+          ) : null}
+
           {homeownerNotifications.length ? (
             <div className="mt-5 grid gap-4">
               {homeownerNotifications.map((notification) => {
@@ -5717,9 +5743,133 @@ export default function HomeFaxStandardFindingsSection() {
             </div>
           ) : (
             <div className="mt-5 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-5 text-sm font-semibold text-slate-600">
-              No HomeFax notifications yet.
+              No active HomeFax notifications.
             </div>
           )}
+
+          {showHomeownerArchivedNotifications ? (
+            <div className="mt-5 rounded-3xl border border-purple-100 bg-purple-50 p-5">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <div className="text-xs font-black uppercase tracking-[0.2em] text-purple-700">
+                    Archived Inbox
+                  </div>
+                  <div className="mt-1 text-lg font-black text-purple-950">
+                    Archived HomeFax Notifications
+                  </div>
+                  <div className="mt-2 text-sm leading-6 text-purple-900">
+                    These reminders are hidden from your active notification list. Restore one to move it back to your active inbox.
+                  </div>
+                </div>
+
+                <span className="rounded-full bg-white px-3 py-1 text-xs font-black uppercase tracking-wide text-purple-800">
+                  {homeownerArchivedNotificationCount} Archived
+                </span>
+              </div>
+
+              {homeownerArchivedNotifications.length ? (
+                <div className="mt-5 grid gap-4">
+                  {homeownerArchivedNotifications.map((notification) => {
+                    const notificationStatus = String(notification.notification_status || "queued")
+                      .trim()
+                      .toLowerCase();
+
+                    const friendlyStatus =
+                      notificationStatus === "sent"
+                        ? "Delivered"
+                        : notificationStatus === "failed"
+                          ? "Delivery Issue"
+                          : "Ready";
+
+                    const friendlyStatusClass =
+                      notificationStatus === "sent"
+                        ? "rounded-full bg-emerald-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-emerald-800"
+                        : notificationStatus === "failed"
+                          ? "rounded-full bg-amber-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-amber-800"
+                          : "rounded-full bg-blue-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-blue-800";
+
+                    return (
+                      <div
+                        key={`homeowner-archived-notification-${notification.id}`}
+                        className="rounded-3xl border border-purple-100 bg-white p-5"
+                      >
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                          <div>
+                            <div className="text-xs font-black uppercase tracking-wide text-purple-700">
+                              Archived Store Reminder
+                            </div>
+
+                            <div className="mt-1 text-base font-black text-slate-950">
+                              {notification.title || "HomeFax reminder"}
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap gap-2">
+                            <span className={friendlyStatusClass}>
+                              {friendlyStatus}
+                            </span>
+
+                            <span className={getHomeownerNotificationReadClass(notification)}>
+                              {getHomeownerNotificationReadLabel(notification)}
+                            </span>
+
+                            <span className={getHomeownerNotificationArchiveClass(notification)}>
+                              Archived
+                            </span>
+                          </div>
+                        </div>
+
+                        {notification.body ? (
+                          <div className="mt-4 rounded-2xl bg-purple-50 p-4 text-sm leading-6 text-slate-700">
+                            {String(notification.body)
+                              .split("\n")
+                              .filter((line) => line.trim())
+                              .slice(0, 6)
+                              .map((line, index) => (
+                                <div key={`homeowner-archived-notification-${notification.id}-line-${index}`}>
+                                  {line}
+                                </div>
+                              ))}
+                          </div>
+                        ) : null}
+
+                        {notification.homeowner_archived_at ? (
+                          <div className="mt-3 text-xs font-semibold text-purple-700">
+                            Archived at: {notification.homeowner_archived_at}
+                          </div>
+                        ) : null}
+
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            disabled={homeownerNotificationActionBusyId === `${notification.id}-unarchive`}
+                            onClick={() => handleHomeownerNotificationAction(notification, "unarchive")}
+                            className="rounded-full border border-purple-200 bg-purple-50 px-4 py-2 text-xs font-black text-purple-800 shadow-sm hover:bg-purple-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {homeownerNotificationActionBusyId === `${notification.id}-unarchive`
+                              ? "Restoring..."
+                              : "Restore to Active"}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setShowHomeownerArchivedNotifications(false)}
+                            className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-800 shadow-sm hover:bg-slate-50"
+                          >
+                            Hide Archived
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="mt-5 rounded-2xl border border-dashed border-purple-200 bg-white p-5 text-sm font-semibold text-purple-700">
+                  No archived HomeFax notifications.
+                </div>
+              )}
+            </div>
+          ) : null}
         </div>
 
         <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
