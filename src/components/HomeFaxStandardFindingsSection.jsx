@@ -2908,6 +2908,50 @@ function getNotificationPreferenceSaveClass(form) {
     return String(getDashboardAuthUser()?.role || "homeowner").trim().toLowerCase();
   }
 
+  function isDashboardHomeownerRole() {
+    return getDashboardAuthRole() === "homeowner";
+  }
+
+  function isDashboardAdminRole() {
+    return ["admin", "tenant_admin", "super_admin", "internal"].includes(getDashboardAuthRole());
+  }
+
+  function isDashboardInternalRole() {
+    return ["super_admin", "internal"].includes(getDashboardAuthRole());
+  }
+
+  function canShowAdminDashboardTools() {
+    return isDashboardAdminRole();
+  }
+
+  function canShowInternalDashboardTools() {
+    return isDashboardInternalRole();
+  }
+
+  function getDashboardRoleSeparationLabel() {
+    if (isDashboardInternalRole()) return "Internal tools enabled";
+    if (isDashboardAdminRole()) return "Admin tools enabled";
+    if (isDashboardHomeownerRole()) return "Homeowner-safe view";
+    return "Limited role view";
+  }
+
+  function getDashboardRoleSeparationClass() {
+    if (isDashboardInternalRole()) {
+      return "rounded-full bg-purple-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-purple-800";
+    }
+
+    if (isDashboardAdminRole()) {
+      return "rounded-full bg-amber-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-amber-800";
+    }
+
+    return "rounded-full bg-emerald-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-emerald-800";
+  }
+
+  function getDashboardAdminHiddenMessage() {
+    if (canShowAdminDashboardTools()) return "";
+    return "Admin and provider debug tools are hidden for this homeowner session.";
+  }
+
   function getDashboardAuthUserId() {
     return String(
       getDashboardAuthUser()?.user_id ||
@@ -6153,7 +6197,17 @@ function getNotificationPreferenceSaveClass(form) {
             <span className="rounded-full bg-white px-3 py-1 text-xs font-black uppercase tracking-wide text-blue-800">
               Preferences: auth-gated read/write
             </span>
+
+            <span className={getDashboardRoleSeparationClass()}>
+              {getDashboardRoleSeparationLabel()}
+            </span>
           </div>
+
+          {getDashboardAdminHiddenMessage() ? (
+            <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-900">
+              {getDashboardAdminHiddenMessage()}
+            </div>
+          ) : null}
         </div>
 
         <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -6488,6 +6542,7 @@ function getNotificationPreferenceSaveClass(form) {
           </div>
         </div>
 
+        {canShowAdminDashboardTools() ? (
         <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
@@ -6519,8 +6574,9 @@ function getNotificationPreferenceSaveClass(form) {
             </button>
           </div>
         </div>
+        ) : null}
 
-        {showAdminNotificationDebug ? (
+        {canShowAdminDashboardTools() && showAdminNotificationDebug ? (
         <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div>
