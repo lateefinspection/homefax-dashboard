@@ -2313,6 +2313,11 @@ export default function HomeFaxStandardFindingsSection() {
   const [showHomeownerArchivedNotifications, setShowHomeownerArchivedNotifications] = useState(false);
 
   const [notificationPreferencePayload, setNotificationPreferencePayload] = useState(null);
+  const [notificationPreferenceBackendValidation, setNotificationPreferenceBackendValidation] = useState({
+    valid: true,
+    warnings: [],
+    errors: [],
+  });
   const [notificationPreferenceLoading, setNotificationPreferenceLoading] = useState(false);
   const [notificationPreferenceSaving, setNotificationPreferenceSaving] = useState(false);
   const [notificationPreferenceError, setNotificationPreferenceError] = useState("");
@@ -2628,7 +2633,56 @@ export default function HomeFaxStandardFindingsSection() {
     return "Review needed";
   }
 
-  function getNotificationPreferenceSaveClass(form) {
+  function normalizeNotificationPreferenceBackendMessage(item) {
+  if (!item) return "";
+
+  if (typeof item === "string") {
+    return item.trim();
+  }
+
+  if (typeof item === "object") {
+    return String(item.message || item.code || item.error || item.reason || "").trim();
+  }
+
+  return String(item || "").trim();
+}
+
+function extractNotificationPreferenceBackendValidation(payload) {
+  const validation =
+    payload?.preference_validation ||
+    payload?.validation?.preference_validation ||
+    payload?.preferences?.preference_validation ||
+    payload?.detail?.preference_validation ||
+    payload?.detail?.validation?.preference_validation ||
+    null;
+
+  const warnings = Array.isArray(validation?.warnings)
+    ? validation.warnings.map(normalizeNotificationPreferenceBackendMessage).filter(Boolean)
+    : [];
+
+  const errors = Array.isArray(validation?.errors)
+    ? validation.errors.map(normalizeNotificationPreferenceBackendMessage).filter(Boolean)
+    : [];
+
+  return {
+    valid: validation?.valid !== false,
+    warnings,
+    errors,
+  };
+}
+
+function hasNotificationPreferenceBackendReview(validation) {
+  return Boolean(
+    validation &&
+      (
+        validation.valid === false ||
+        (validation.warnings || []).length ||
+        (validation.errors || []).length
+      )
+  );
+}
+
+function getNotificationPreferenceSaveClass(form) {
     const readiness = getNotificationPreferenceSaveReadiness(form);
 
     if (readiness.ready) {
@@ -2876,6 +2930,9 @@ export default function HomeFaxStandardFindingsSection() {
       const preferences = data?.preferences || {};
 
       setNotificationPreferencePayload(data);
+      setNotificationPreferenceBackendValidation(
+        extractNotificationPreferenceBackendValidation(data)
+      );
       setNotificationPreferenceForm((current) => ({
         ...current,
         user_id: preferences.user_id || safeUserId,
@@ -2902,6 +2959,11 @@ export default function HomeFaxStandardFindingsSection() {
     } catch (err) {
       console.error("Failed to load notification preferences", err);
       setNotificationPreferencePayload(null);
+      setNotificationPreferenceBackendValidation({
+        valid: true,
+        warnings: [],
+        errors: [],
+      });
       setNotificationPreferenceError(err?.message || "Failed to load notification preferences.");
     } finally {
       if (!quiet) {
@@ -2921,6 +2983,11 @@ export default function HomeFaxStandardFindingsSection() {
     setNotificationPreferenceSaving(true);
     setNotificationPreferenceError("");
     setNotificationPreferenceSuccess("");
+    setNotificationPreferenceBackendValidation({
+      valid: true,
+      warnings: [],
+      errors: [],
+    });
 
     try {
       const response = await fetch(
@@ -2974,6 +3041,9 @@ export default function HomeFaxStandardFindingsSection() {
       }
 
       const preferences = data?.preferences || {};
+      const backendValidation = extractNotificationPreferenceBackendValidation(data);
+
+      setNotificationPreferenceBackendValidation(backendValidation);
 
       setNotificationPreferencePayload({
         success: true,
@@ -2983,8 +3053,13 @@ export default function HomeFaxStandardFindingsSection() {
         preferences,
       });
 
-      setNotificationPreferenceSuccess("Notification preferences saved.");
-      await loadNotificationPreferences({ quiet: true });
+      setNotificationPreferenceSuccess(
+        hasNotificationPreferenceBackendReview(backendValidation)
+          ? "Notification preferences saved, but backend validation found items to review."
+          : "Notification preferences saved."
+      );
+      // Keep backend validation from the save response visible.
+      // A quiet reload can erase preference_validation if the GET response does not include it.
     } catch (err) {
       console.error("Failed to save notification preferences", err);
       setNotificationPreferenceError(err?.message || "Failed to save notification preferences.");
@@ -5922,6 +5997,44 @@ export default function HomeFaxStandardFindingsSection() {
           {notificationPreferenceSuccess ? (
             <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-800">
               {notificationPreferenceSuccess}
+            </div>
+          ) : null}
+
+          {hasNotificationPreferenceBackendReview(notificationPreferenceBackendValidation) ? (
+            <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+              <div className="text-xs font-black uppercase tracking-wide text-amber-800">
+                Backend Preference Review
+              </div>
+
+              <div className="mt-2 text-sm font-semibold leading-6 text-amber-900">
+                HomeFax backend validation found preference items that need review before delivery.
+              </div>
+
+              {notificationPreferenceBackendValidation.errors?.length ? (
+                <div className="mt-3">
+                  <div className="text-[11px] font-black uppercase tracking-wide text-amber-800">
+                    Errors
+                  </div>
+                  <ul className="mt-1 list-disc space-y-1 pl-5 text-sm font-bold text-amber-950">
+                    {notificationPreferenceBackendValidation.errors.map((message) => (
+                      <li key={`backend-pref-error-${message}`}>{message}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {notificationPreferenceBackendValidation.warnings?.length ? (
+                <div className="mt-3">
+                  <div className="text-[11px] font-black uppercase tracking-wide text-amber-800">
+                    Warnings
+                  </div>
+                  <ul className="mt-1 list-disc space-y-1 pl-5 text-sm font-semibold text-amber-900">
+                    {notificationPreferenceBackendValidation.warnings.map((message) => (
+                      <li key={`backend-pref-warning-${message}`}>{message}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
             </div>
           ) : null}
 
