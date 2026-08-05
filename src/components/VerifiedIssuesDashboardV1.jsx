@@ -5884,6 +5884,7 @@ export default function VerifiedIssuesDashboardV1() {
           </div>
         </HomeFaxSectionErrorBoundary>
 
+        {isAdminMode ? (
         <div className="mb-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
@@ -5908,8 +5909,9 @@ export default function VerifiedIssuesDashboardV1() {
             </button>
           </div>
         </div>
+        ) : null}
 
-        {showLegacyReviewQueue ? (
+        {isAdminMode && showLegacyReviewQueue ? (
           loading ? (
             <LoadingBlock label="Loading issues..." />
           ) : (
