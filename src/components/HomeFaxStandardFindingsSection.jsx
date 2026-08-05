@@ -2312,6 +2312,11 @@ export default function HomeFaxStandardFindingsSection() {
   const [showAdminNotificationDebug, setShowAdminNotificationDebug] = useState(false);
   const [showHomeownerArchivedNotifications, setShowHomeownerArchivedNotifications] = useState(false);
 
+  const [dashboardAuthSession, setDashboardAuthSession] = useState(null);
+  const [dashboardAuthRecordAccess, setDashboardAuthRecordAccess] = useState(null);
+  const [dashboardAuthLoading, setDashboardAuthLoading] = useState(false);
+  const [dashboardAuthError, setDashboardAuthError] = useState("");
+
   const [notificationPreferencePayload, setNotificationPreferencePayload] = useState(null);
   const [notificationPreferenceBackendValidation, setNotificationPreferenceBackendValidation] = useState({
     valid: true,
@@ -2895,9 +2900,106 @@ function getNotificationPreferenceSaveClass(form) {
     }
   }
 
+  function getDashboardAuthUser() {
+    return dashboardAuthSession?.user || dashboardAuthSession?.current_user || null;
+  }
+
+  function getDashboardAuthRole() {
+    return String(getDashboardAuthUser()?.role || "homeowner").trim().toLowerCase();
+  }
+
+  function getDashboardAuthUserId() {
+    return String(
+      getDashboardAuthUser()?.user_id ||
+        notificationPreferenceForm.user_id ||
+        "homeowner-smoke-test"
+    ).trim();
+  }
+
+  function getDashboardAuthTenantId() {
+    return String(
+      getDashboardAuthUser()?.tenant_id ||
+        "lateef-home-inspection"
+    ).trim();
+  }
+
+  function dashboardAuthHeaders() {
+    const user = getDashboardAuthUser();
+
+    if (!user) {
+      return {};
+    }
+
+    return {
+      "X-HomeFax-Dev-User": String(user.user_id || "homeowner-smoke-test"),
+      "X-HomeFax-Dev-Tenant": String(user.tenant_id || "lateef-home-inspection"),
+      "X-HomeFax-Dev-Role": String(user.role || "homeowner"),
+    };
+  }
+
+  async function loadDashboardAuthSession({ quiet = false } = {}) {
+    const safeRecordId = String(recordId || "").trim();
+
+    if (!safeRecordId) {
+      setDashboardAuthSession(null);
+      setDashboardAuthRecordAccess(null);
+      return;
+    }
+
+    if (!quiet) {
+      setDashboardAuthLoading(true);
+    }
+
+    setDashboardAuthError("");
+
+    try {
+      const meResponse = await fetch(`${apiBaseUrl}/auth/me`);
+      const meData = await meResponse.json().catch(() => ({}));
+
+      if (!meResponse.ok || meData?.success === false) {
+        throw new Error(
+          meData?.message ||
+            meData?.error ||
+            meData?.detail?.message ||
+            "Failed to load dashboard session."
+        );
+      }
+
+      const accessResponse = await fetch(
+        `${apiBaseUrl}/auth/record-access/${encodeURIComponent(safeRecordId)}`
+      );
+      const accessData = await accessResponse.json().catch(() => ({}));
+
+      if (!accessResponse.ok || accessData?.success === false) {
+        throw new Error(
+          accessData?.message ||
+            accessData?.error ||
+            accessData?.detail?.message ||
+            "Failed to load dashboard record access."
+        );
+      }
+
+      setDashboardAuthSession(meData);
+      setDashboardAuthRecordAccess(accessData);
+    } catch (error) {
+      console.error("Failed to load dashboard auth session", error);
+      setDashboardAuthSession(null);
+      setDashboardAuthRecordAccess(null);
+      setDashboardAuthError(error?.message || "Failed to load dashboard session.");
+    } finally {
+      if (!quiet) {
+        setDashboardAuthLoading(false);
+      }
+    }
+  }
+
   async function loadNotificationPreferences({ quiet = false } = {}) {
     const safeRecordId = String(recordId || "").trim();
-    const safeUserId = String(notificationPreferenceForm.user_id || "homeowner-smoke-test").trim();
+    const safeUserId = String(
+      notificationPreferenceForm.user_id ||
+        getDashboardAuthUserId() ||
+        "homeowner-smoke-test"
+    ).trim();
 
     if (!safeRecordId) {
       setNotificationPreferencePayload(null);
@@ -2912,11 +3014,23 @@ function getNotificationPreferenceSaveClass(form) {
     setNotificationPreferenceSuccess("");
 
     try {
-      const response = await fetch(
-        `${apiBaseUrl}/notification-preferences/${encodeURIComponent(safeRecordId)}?user_id=${encodeURIComponent(safeUserId)}`
+      let response = await fetch(
+        `${apiBaseUrl}/auth/notification-preferences/${encodeURIComponent(safeRecordId)}`,
+        {
+          headers: {
+            ...dashboardAuthHeaders(),
+          },
+        }
       );
 
-      const data = await response.json().catch(() => ({}));
+      let data = await response.json().catch(() => ({}));
+
+      if (!response.ok || data?.success === false) {
+        response = await fetch(
+          `${apiBaseUrl}/notification-preferences/${encodeURIComponent(safeRecordId)}?user_id=${encodeURIComponent(safeUserId)}`
+        );
+        data = await response.json().catch(() => ({}));
+      }
 
       if (!response.ok || data?.success === false) {
         throw new Error(
@@ -2991,17 +3105,21 @@ function getNotificationPreferenceSaveClass(form) {
 
     try {
       const response = await fetch(
-        `${apiBaseUrl}/notification-preferences/${encodeURIComponent(safeRecordId)}`,
+        `${apiBaseUrl}/auth/notification-preferences/${encodeURIComponent(safeRecordId)}`,
         {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
+            ...dashboardAuthHeaders(),
           },
           body: JSON.stringify({
-            tenant_id: "lateef-home-inspection",
+            tenant_id: getDashboardAuthTenantId() || "lateef-home-inspection",
             property_id: "",
 
-            user_id: notificationPreferenceForm.user_id || "homeowner-smoke-test",
+            user_id:
+              getDashboardAuthUserId() ||
+              notificationPreferenceForm.user_id ||
+              "homeowner-smoke-test",
 
             in_app_enabled: notificationPreferenceForm.in_app_enabled,
             email_enabled: notificationPreferenceForm.email_enabled,
@@ -3021,7 +3139,10 @@ function getNotificationPreferenceSaveClass(form) {
             email_recipient: notificationPreferenceForm.email_recipient,
             sms_recipient: notificationPreferenceForm.sms_recipient,
 
-            updated_by: notificationPreferenceForm.user_id || "homeowner-smoke-test",
+            updated_by:
+              getDashboardAuthUserId() ||
+              notificationPreferenceForm.user_id ||
+              "homeowner-smoke-test",
             notes:
               notificationPreferenceForm.notes ||
               "Saved from Dashboard Notification Preferences UI Pass 1.",
@@ -3766,6 +3887,7 @@ function getNotificationPreferenceSaveClass(form) {
       await loadLocationPermission();
       await loadHomeCareShoppingItems();
       await loadStoreReminderNotifications();
+      await loadDashboardAuthSession();
       await loadNotificationPreferences();
     }
 
@@ -3785,6 +3907,7 @@ function getNotificationPreferenceSaveClass(form) {
       loadLocationPermission({ quiet: true });
       loadHomeCareShoppingItems({ quiet: true });
       loadStoreReminderNotifications({ quiet: true });
+      loadDashboardAuthSession({ quiet: true });
       loadNotificationPreferences({ quiet: true });
     }
 
@@ -5945,6 +6068,92 @@ function getNotificationPreferenceSaveClass(form) {
               )}
             </div>
           ) : null}
+        </div>
+
+        <div className="mt-5 rounded-3xl border border-blue-200 bg-blue-50 p-5 shadow-sm">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div className="text-xs font-black uppercase tracking-[0.2em] text-blue-800">
+                Dashboard Session
+              </div>
+
+              <div className="mt-1 text-lg font-black text-blue-950">
+                HomeFax Auth + Record Access
+              </div>
+
+              <div className="mt-2 text-sm leading-6 text-blue-900">
+                The dashboard is reading backend auth/session context before using protected HomeFax endpoints.
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => loadDashboardAuthSession({ quiet: false })}
+              className="rounded-full border border-blue-200 bg-white px-4 py-2 text-xs font-black text-blue-800 shadow-sm hover:bg-blue-50"
+            >
+              Refresh Session
+            </button>
+          </div>
+
+          {dashboardAuthLoading ? (
+            <div className="mt-4 rounded-2xl border border-blue-200 bg-white p-4 text-sm font-bold text-blue-800">
+              Loading dashboard session...
+            </div>
+          ) : null}
+
+          {dashboardAuthError ? (
+            <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">
+              {dashboardAuthError}
+            </div>
+          ) : null}
+
+          <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-2xl border border-blue-100 bg-white p-4">
+              <div className="text-[11px] font-black uppercase tracking-wide text-blue-700">
+                User
+              </div>
+              <div className="mt-1 break-all text-sm font-black text-slate-950">
+                {getDashboardAuthUserId()}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-blue-100 bg-white p-4">
+              <div className="text-[11px] font-black uppercase tracking-wide text-blue-700">
+                Role
+              </div>
+              <div className="mt-1 text-sm font-black uppercase text-slate-950">
+                {getDashboardAuthRole()}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-blue-100 bg-white p-4">
+              <div className="text-[11px] font-black uppercase tracking-wide text-blue-700">
+                Tenant
+              </div>
+              <div className="mt-1 break-all text-sm font-black text-slate-950">
+                {getDashboardAuthTenantId()}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-blue-100 bg-white p-4">
+              <div className="text-[11px] font-black uppercase tracking-wide text-blue-700">
+                Record Access
+              </div>
+              <div className="mt-1 text-sm font-black uppercase text-slate-950">
+                {dashboardAuthRecordAccess?.access?.allowed ? "Allowed" : "Not confirmed"}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <span className="rounded-full bg-white px-3 py-1 text-xs font-black uppercase tracking-wide text-blue-800">
+              Auth Mode: {dashboardAuthSession?.auth_mode || "loading"}
+            </span>
+
+            <span className="rounded-full bg-white px-3 py-1 text-xs font-black uppercase tracking-wide text-blue-800">
+              Preferences: auth-gated read/write
+            </span>
+          </div>
         </div>
 
         <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
