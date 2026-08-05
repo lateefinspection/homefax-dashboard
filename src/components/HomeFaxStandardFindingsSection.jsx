@@ -4526,19 +4526,39 @@ function getNotificationPreferenceSaveClass(form) {
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="text-sm font-black uppercase tracking-wide text-blue-700">
-              HomeFax Standard Findings
-            </p>
+            {canShowAdminDashboardTools() ? (
+              <>
+                <p className="text-sm font-black uppercase tracking-wide text-blue-700">
+                  HomeFax Standard Findings
+                </p>
 
-            <h2 className="mt-1 text-2xl font-black text-slate-950">
-              Source-Backed Issue Review
-            </h2>
+                <h2 className="mt-1 text-2xl font-black text-slate-950">
+                  Source-Backed Issue Review
+                </h2>
 
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-              Each card shows the original inspector finding, finding location,
-              HomeFax explanation, recommended trade, monitoring plan, and
-              evidence photos.
-            </p>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+                  Each card shows the original inspector finding, finding location,
+                  HomeFax explanation, recommended trade, monitoring plan, and
+                  evidence photos.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-black uppercase tracking-wide text-emerald-700">
+                  Your Inspection Findings
+                </p>
+
+                <h2 className="mt-1 text-2xl font-black text-slate-950">
+                  Review Your Home-Care Issues
+                </h2>
+
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+                  Review each issue, photo, location, and recommended next step.
+                  Choose what should be monitored, repaired, already fixed,
+                  dismissed, or corrected.
+                </p>
+              </>
+            )}
           </div>
 
           <div className="rounded-2xl bg-slate-900 px-5 py-4 text-white">

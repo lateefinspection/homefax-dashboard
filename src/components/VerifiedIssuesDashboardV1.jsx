@@ -5809,7 +5809,7 @@ export default function VerifiedIssuesDashboardV1() {
                 </button>
               </div>
 
-              {mode === "record" && (
+              {mode === "record" && isAdminMode ? (
                 <select
                   value={selectedRecord}
                   onChange={(e) => {
@@ -5827,7 +5827,7 @@ export default function VerifiedIssuesDashboardV1() {
                     </option>
                   ))}
                 </select>
-              )}
+              ) : null}
 
               {mode === "queue" && (
                 <select
