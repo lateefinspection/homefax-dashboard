@@ -4561,15 +4561,17 @@ function getNotificationPreferenceSaveClass(form) {
             )}
           </div>
 
-          <div className="rounded-2xl bg-slate-900 px-5 py-4 text-white">
-            <div className="text-xs font-bold uppercase tracking-wide text-slate-300">
-              Total Findings
+          {canShowAdminDashboardTools() ? (
+            <div className="rounded-2xl bg-slate-900 px-5 py-4 text-white">
+              <div className="text-xs font-bold uppercase tracking-wide text-slate-300">
+                Total Findings
+              </div>
+              <div className="text-3xl font-black">{totalFindings}</div>
             </div>
-            <div className="text-3xl font-black">{totalFindings}</div>
-          </div>
+          ) : null}
         </div>
 
-        {locationStats.length ? (
+        {canShowAdminDashboardTools() && locationStats.length ? (
           <div className="mt-5">
             <div className="mb-2 text-sm font-black text-slate-800">
               Locations / Areas Found

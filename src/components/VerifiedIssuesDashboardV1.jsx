@@ -5798,15 +5798,17 @@ export default function VerifiedIssuesDashboardV1() {
                 >
                   Findings to Review
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setMode("record")}
-                  className={`rounded-xl px-4 py-2 text-sm font-semibold ${
-                    mode === "record" ? "bg-slate-900 text-white" : "text-slate-600"
-                  }`}
-                >
-                  Inspection Findings
-                </button>
+                {isAdminMode ? (
+                  <button
+                    type="button"
+                    onClick={() => setMode("record")}
+                    className={`rounded-xl px-4 py-2 text-sm font-semibold ${
+                      mode === "record" ? "bg-slate-900 text-white" : "text-slate-600"
+                    }`}
+                  >
+                    Inspection Findings
+                  </button>
+                ) : null}
               </div>
 
               {mode === "record" && isAdminMode ? (
@@ -5829,7 +5831,7 @@ export default function VerifiedIssuesDashboardV1() {
                 </select>
               ) : null}
 
-              {mode === "queue" && (
+              {mode === "queue" && isAdminMode ? (
                 <select
                   value={queueLimit}
                   onChange={(e) => setQueueLimit(Number(e.target.value))}
@@ -5840,7 +5842,7 @@ export default function VerifiedIssuesDashboardV1() {
                   <option value={50}>50</option>
                   <option value={100}>100</option>
                 </select>
-              )}
+              ) : null}
             </div>
 
             <div className="mt-4 flex items-center rounded-2xl border border-slate-200 bg-white px-3 py-2">
