@@ -531,6 +531,7 @@ export default function HomeFaxStandardFindingCard({
   onRefresh,
   forcedExpanded,
   repairEvent,
+  isAdminMode = false,
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -597,14 +598,6 @@ export default function HomeFaxStandardFindingCard({
       ""
   );
 
-  const isAdminMode =
-    typeof window !== "undefined" &&
-    (() => {
-      const params = new URLSearchParams(window.location.search);
-      const value = String(params.get("admin") || params.get("mode") || "").toLowerCase();
-      return value === "1" || value === "true" || value === "admin";
-    })();
-
   useEffect(() => {
     setLocalAdminReviewStatus(issue.admin_review_status || "pending");
     setLocalAdminImageDecision(issue.admin_image_decision || "pending");
@@ -662,6 +655,8 @@ export default function HomeFaxStandardFindingCard({
     hasRealSavedReview && currentStatus && currentStatus.toLowerCase() !== "open"
       ? currentStatus
       : "";
+
+  const homeownerMode = !isAdminMode;
 
   // Homeowner Explicit Image Selection UI Pass 1
   const [selectedHomeownerImageUrl, setSelectedHomeownerImageUrl] = useState("");
@@ -977,14 +972,16 @@ export default function HomeFaxStandardFindingCard({
       <div className="border-b border-slate-100 bg-slate-50 p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 flex-1">
-            <div className="mb-3 flex flex-wrap gap-2">
-              {itemNumber ? <Pill>Item {itemNumber}</Pill> : null}
-              {category ? <Pill>{category}</Pill> : null}
-              {defectType ? <Pill>{defectType}</Pill> : null}
-              {issue.candidate_image_count ? (
-                <Pill>{issue.candidate_image_count} Image Candidates</Pill>
-              ) : null}
-            </div>
+            {isAdminMode ? (
+              <div className="mb-3 flex flex-wrap gap-2">
+                {itemNumber ? <Pill>Item {itemNumber}</Pill> : null}
+                {category ? <Pill>{category}</Pill> : null}
+                {defectType ? <Pill>{defectType}</Pill> : null}
+                {issue.candidate_image_count ? (
+                  <Pill>{issue.candidate_image_count} Image Candidates</Pill>
+                ) : null}
+              </div>
+            ) : null}
 
             <h3 className="text-xl font-black text-slate-950">
               {displayCleanText(title)}
@@ -994,11 +991,23 @@ export default function HomeFaxStandardFindingCard({
               <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
               <div>
                 <span className="uppercase tracking-wide text-red-700">
-                  Location / Area:
+                  Where:
                 </span>{" "}
                 {displayCleanText(location)}
               </div>
             </div>
+
+            {homeownerMode ? (
+              <div className="mt-3 rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+                <div className="text-xs font-black uppercase tracking-wide text-emerald-700">
+                  Homeowner Summary
+                </div>
+                <div className="mt-2 text-sm leading-6 text-slate-700">
+                  Review what was found, check the photo, then choose whether this should be monitored,
+                  repaired, marked already fixed, dismissed, or sent back as a wrong photo.
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <button
@@ -1597,6 +1606,7 @@ export default function HomeFaxStandardFindingCard({
 
         {expanded ? (
           <div className="grid gap-4">
+            {isAdminMode ? (
             <div className="rounded-2xl border border-slate-200 bg-white p-4">
               <div className="mb-3 text-sm font-bold text-slate-900">
                 Source Details
@@ -1667,6 +1677,7 @@ export default function HomeFaxStandardFindingCard({
                 ) : null}
               </div>
             </div>
+            ) : null}
 
             <div className="rounded-2xl border border-slate-200 bg-white p-4">
               <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

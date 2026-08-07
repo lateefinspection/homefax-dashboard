@@ -7119,6 +7119,7 @@ function getNotificationPreferenceSaveClass(form) {
             monitoringPlan={monitoringPlanByIssueId.get(String(issue.id))}
             monitoringEventCount={monitoringEventCountByIssueId.get(String(issue.id)) || 0}
             repairEvent={repairEventsByIssueId[String(issue.id)] || null}
+            isAdminMode={canShowAdminDashboardTools()}
             forcedExpanded={bulkExpandCommand}
             onRefresh={() => {
               loadStandardFindings({ quiet: true });
