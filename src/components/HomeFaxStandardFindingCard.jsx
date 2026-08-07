@@ -536,6 +536,10 @@ export default function HomeFaxStandardFindingCard({
   const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
+    if (!isAdminMode) {
+      return;
+    }
+
     if (
       forcedExpanded &&
       typeof forcedExpanded === "object" &&
@@ -545,7 +549,7 @@ export default function HomeFaxStandardFindingCard({
     } else if (typeof forcedExpanded === "boolean") {
       setExpanded(forcedExpanded);
     }
-  }, [forcedExpanded]);
+  }, [forcedExpanded, isAdminMode]);
 
   const [reviewBusy, setReviewBusy] = useState(false);
   const [reviewError, setReviewError] = useState("");
@@ -657,6 +661,12 @@ export default function HomeFaxStandardFindingCard({
       : "";
 
   const homeownerMode = !isAdminMode;
+
+  useEffect(() => {
+    if (homeownerMode) {
+      setExpanded(false);
+    }
+  }, [homeownerMode, issue?.id]);
 
   // Homeowner Explicit Image Selection UI Pass 1
   const [selectedHomeownerImageUrl, setSelectedHomeownerImageUrl] = useState("");
