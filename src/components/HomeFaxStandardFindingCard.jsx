@@ -1038,6 +1038,7 @@ export default function HomeFaxStandardFindingCard({
         </div>
       </div>
 
+      {expanded ? (
       <div className="grid gap-4 p-5">
         <SectionBlock icon={FileText} title="Original Inspector Finding" tone="source">
           {sourceText}
@@ -1175,6 +1176,10 @@ export default function HomeFaxStandardFindingCard({
           </div>
         ) : null}
 
+      </div>
+      ) : null}
+
+      <div className="grid gap-4 p-5">
         <div className="rounded-2xl border border-slate-200 bg-white p-4">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
