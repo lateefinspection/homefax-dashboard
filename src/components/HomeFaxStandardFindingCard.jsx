@@ -708,6 +708,12 @@ export default function HomeFaxStandardFindingCard({
     ""
   );
 
+  const primaryHomeownerImage =
+    images.find((image) => image?.url === homeownerSelectedImageUrl) ||
+    images.find((image) => image?.url === primaryAdminImageUrl) ||
+    images[0] ||
+    null;
+
   const baselineLocked = ["yes", "true", "1", "locked"].includes(
     String(localBaselineLocked || issue.baseline_locked || issue.baselineLocked || "").toLowerCase()
   );
@@ -1180,6 +1186,46 @@ export default function HomeFaxStandardFindingCard({
       ) : null}
 
       <div className="grid gap-4 p-5">
+        {primaryHomeownerImage ? (
+          <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div className="text-sm font-black text-slate-950">
+                  Primary Evidence Photo
+                </div>
+                <div className="mt-1 text-xs font-semibold leading-5 text-slate-600">
+                  This is the main photo HomeFax is using for this finding. Open Details to review other photo candidates.
+                </div>
+              </div>
+
+              <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-black text-blue-800">
+                Homeowner review photo
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                const imageIndex = images.findIndex((image) => image?.url === primaryHomeownerImage.url);
+                setLightboxIndex(imageIndex >= 0 ? imageIndex : 0);
+              }}
+              className="group block w-full overflow-hidden rounded-2xl border border-blue-200 bg-white text-left shadow-sm"
+            >
+              <img
+                src={getImageUrl(apiBaseUrl, primaryHomeownerImage.url)}
+                alt={primaryHomeownerImage.label || "Primary evidence photo"}
+                className="max-h-72 w-full object-cover transition group-hover:scale-[1.01]"
+              />
+              <div className="flex items-center justify-between gap-3 px-3 py-2 text-xs font-bold text-slate-700">
+                <span>{primaryHomeownerImage.label || "Primary Evidence"}</span>
+                <span className="rounded-full bg-slate-950 px-3 py-1 text-white">
+                  Zoom
+                </span>
+              </div>
+            </button>
+          </div>
+        ) : null}
+
         <div className="rounded-2xl border border-slate-200 bg-white p-4">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
